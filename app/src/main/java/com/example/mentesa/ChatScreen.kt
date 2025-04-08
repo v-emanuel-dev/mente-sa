@@ -1,11 +1,15 @@
 package com.example.mentesa
 
+// Imports essenciais (verifique se todos estão presentes)
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
@@ -15,32 +19,46 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
-// Import necessário para a funcionalidade de copiar
-import androidx.compose.foundation.text.selection.SelectionContainer
-// Import do tema (para o Preview e potencialmente dentro da função principal)
+// Import do seu tema
 import com.example.mentesa.ui.theme.MenteSaTheme
+// Imports do Coroutines
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+// Imports das suas classes de dados/viewmodel (ajuste pacote se necessário)
+import com.example.mentesa.ChatMessage
+import com.example.mentesa.ChatUiState
+import com.example.mentesa.ChatViewModel
+import com.example.mentesa.LoadingState
+import com.example.mentesa.Sender
 
+
+@OptIn(ExperimentalMaterial3Api::class) // Necessário para TopAppBar/Scaffold
 @Composable
 fun ChatScreen(
-    chatViewModel: ChatViewModel = viewModel() // Usa o ViewModel renomeado
+    chatViewModel: ChatViewModel = viewModel()
 ) {
-    // Coleta o estado atual da UI do ViewModel
     val chatUiState by chatViewModel.uiState.collectAsState()
-    // Estado para guardar o texto que o usuário está digitando
     var userMessage by rememberSaveable { mutableStateOf("") }
-    // Estado para controlar a rolagem da lista
     val listState = rememberLazyListState()
-    // Scope para lançar coroutines (para rolar a lista)
     val coroutineScope = rememberCoroutineScope()
 
-    // Estrutura principal da tela usando Scaffold (padrão Material Design)
     Scaffold(
-        // Barra inferior que contém o campo de texto e o botão de enviar
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text(stringResource(id = R.string.app_name)) },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Black,
+                    titleContentColor = Color.White
+                )
+            )
+        },
         bottomBar = {
             MessageInput(
                 message = userMessage,
@@ -48,49 +66,41 @@ fun ChatScreen(
                 onSendClick = {
                     if (userMessage.isNotBlank()) {
                         chatViewModel.sendMessage(userMessage)
-                        userMessage = "" // Limpa o campo após enviar
-                        // Rola para o fim da lista após enviar (opcional, mas bom para UX)
-                        coroutineScope.launch {
-                            // Espera um pouco para a nova mensagem ser adicionada e rola
-                            // Usar .size pode ser impreciso se a lista atualiza rápido, mas é simples
-                            listState.animateScrollToItem(chatUiState.messages.size)
-                        }
+                        userMessage = ""
                     }
                 },
-                // Desabilita input enquanto aguarda resposta
-                isSendingEnabled = chatUiState.loadingState == LoadingState.IDLE
+                // Habilita/desabilita baseado no estado de loading
+                isSendEnabled = chatUiState.loadingState != LoadingState.LOADING
             )
         }
-    ) { paddingValues -> // Conteúdo principal da tela (lista de mensagens)
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues) // Aplica o padding do Scaffold
+                .padding(paddingValues) // Aplica padding correto vindo do Scaffold
         ) {
-            // Lista rolável de mensagens
             LazyColumn(
                 state = listState,
                 modifier = Modifier
-                    .weight(1f) // Ocupa todo o espaço disponível acima da barra de input
+                    .weight(1f) // Ocupa espaço restante
                     .padding(horizontal = 16.dp),
-                // verticalArrangement = Arrangement.Bottom // Comum em chats, mas pode causar saltos com teclado
-                // Prefira rolar manualmente para o fim
+                // Adiciona padding no topo e/ou fundo da lista se desejar
+                contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
             ) {
-                // Itera sobre a lista de mensagens do UiState
+                // Exibe as mensagens da conversa
                 items(chatUiState.messages) { message ->
-                    // Exibe a bolha de mensagem apropriada (Usuário ou Bot)
                     MessageBubble(message = message)
                 }
 
-                // Se estiver carregando, mostra um indicador na posição do BOT
+                // Exibe a animação de digitação se estiver carregando
                 if (chatUiState.loadingState == LoadingState.LOADING) {
                     item {
-                        MessageBubble(ChatMessage("...", Sender.BOT, isPending = true))
+                        TypingBubbleAnimation(modifier = Modifier.padding(bottom = 4.dp)) // Padding para espaçar da caixa de texto
                     }
                 }
             }
 
-            // Exibe mensagem de erro (opcional, poderia ser um Snackbar ou Toast)
+            // Exibe mensagem de erro (opcional)
             if (chatUiState.loadingState == LoadingState.ERROR && chatUiState.errorMessage != null) {
                 Text(
                     text = "Erro: ${chatUiState.errorMessage}",
@@ -98,33 +108,33 @@ fun ChatScreen(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(start = 16.dp, end = 16.dp, bottom = 8.dp) // Padding inferior
                 )
             }
         }
     }
 
-    // Efeito para rolar para o fim quando uma nova mensagem chega (do user ou bot)
-    LaunchedEffect(chatUiState.messages.size) {
-        // Verifica se a lista não está vazia antes de tentar rolar
-        if (chatUiState.messages.isNotEmpty()) {
-            // Rola para o último item adicionado
-            listState.animateScrollToItem(chatUiState.messages.size - 1)
+    // Efeito para rolar para o fim quando mensagens ou estado de loading mudam
+    LaunchedEffect(chatUiState.messages.size, chatUiState.loadingState) {
+        val itemCount = listState.layoutInfo.totalItemsCount
+        if (itemCount > 0) {
+            listState.animateScrollToItem(itemCount - 1)
         }
     }
 }
 
+
 /**
- * Composable para a barra de entrada de mensagem na parte inferior.
+ * Composable para a barra de entrada de mensagem.
  */
 @Composable
 fun MessageInput(
     message: String,
     onMessageChange: (String) -> Unit,
     onSendClick: () -> Unit,
-    isSendingEnabled: Boolean // Controla se o input/botão estão ativos
+    isSendEnabled: Boolean
 ) {
-    Surface(shadowElevation = 8.dp) { // Adiciona uma leve sombra para destacar
+    Surface(shadowElevation = 8.dp) { // Sombra para destacar a barra
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -136,39 +146,39 @@ fun MessageInput(
                 onValueChange = onMessageChange,
                 placeholder = { Text("Digite sua mensagem...") },
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(24.dp), // Bordas arredondadas
-                colors = TextFieldDefaults.colors( // Remove a linha indicadora padrão
+                shape = RoundedCornerShape(24.dp),
+                colors = TextFieldDefaults.colors(
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent,
-                    errorIndicatorColor = Color.Transparent // Também para erro
+                    errorIndicatorColor = Color.Transparent
                 ),
-                enabled = isSendingEnabled, // Desabilita enquanto carrega
-                maxLines = 5 // Permite algumas linhas mas não infinitas
+                enabled = isSendEnabled, // Controla se pode digitar
+                maxLines = 5 // Permite múltiplas linhas
             )
             Spacer(modifier = Modifier.width(8.dp))
+            // Botão de enviar (sem indicador de progresso aqui)
             IconButton(
                 onClick = onSendClick,
-                enabled = message.isNotBlank() && isSendingEnabled // Habilita só se houver texto e não estiver carregando
+                enabled = message.isNotBlank() && isSendEnabled // Habilita se houver texto E não estiver carregando
             ) {
                 Icon(
                     imageVector = Icons.Default.Send,
-                    contentDescription = stringResource(R.string.action_send), // Certifique-se que R.string.action_send existe
-                    tint = if (message.isNotBlank() && isSendingEnabled) MaterialTheme.colorScheme.primary else Color.Gray
+                    contentDescription = stringResource(R.string.action_send),
+                    tint = if (message.isNotBlank() && isSendEnabled) MaterialTheme.colorScheme.primary else Color.Gray
                 )
             }
         }
     }
 }
 
+
 /**
  * Composable para exibir uma única bolha de mensagem.
- * Adapta a aparência com base no remetente.
- * AGORA COM SUPORTE A SELEÇÃO DE TEXTO PARA COPIAR.
+ * (Versão SIMPLIFICADA - sem lógica 'isPending')
  */
 @Composable
 fun MessageBubble(message: ChatMessage) {
-    // Determina o alinhamento e a cor com base no remetente
     val isUserMessage = message.sender == Sender.USER
     val horizontalAlignment = if (isUserMessage) Alignment.End else Alignment.Start
     val bubbleColor = if (isUserMessage) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
@@ -180,80 +190,153 @@ fun MessageBubble(message: ChatMessage) {
         bottomEnd = if (isUserMessage) 0.dp else 16.dp
     )
 
-    // Organiza a bolha na linha, alinhada corretamente
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp), // Espaçamento vertical entre bolhas
         horizontalArrangement = if (isUserMessage) Arrangement.End else Arrangement.Start
     ) {
-        // --- MUDANÇA APLICADA AQUI ---
-        // Envolve a bolha com SelectionContainer para habilitar copiar/colar
-        SelectionContainer {
-            // A bolha de mensagem real
+        SelectionContainer { // Permite copiar texto
             Box(
                 modifier = Modifier
-                    // Limita a largura máxima da bolha
-                    .fillMaxWidth(if (message.isPending) 0.2f else 0.8f) // Largura menor para o indicador de pendente
-                    .wrapContentWidth(horizontalAlignment) // Garante que o Box em si alinhe corretamente
+                    // Limita a largura da bolha para não ocupar a tela toda
+                    .fillMaxWidth(0.8f) // Ex: máximo de 80% da largura
+                    .wrapContentWidth(horizontalAlignment) // Alinha o Box em si
                     .clip(shape)
                     .background(bubbleColor)
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp) // Padding interno
             ) {
-                // Texto da mensagem ou indicador de pendente
-                if (message.isPending) {
-                    // Indicador de "digitando..." simples
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .align(Alignment.Center),
-                        strokeWidth = 2.dp,
-                        color = textColor // Usa a cor do texto para o indicador
-                    )
-                } else {
-                    Text(
-                        text = message.text,
-                        color = textColor
-                    )
-                }
+                // Apenas exibe o texto
+                Text(
+                    text = message.text,
+                    color = textColor
+                )
             }
         }
-        // --- FIM DA MUDANÇA ---
     }
 }
 
-// Preview para o ChatScreen (atualizado)
+
+/**
+ * Composable para a animação de "digitando" (3 pontos).
+ */
+@Composable
+fun TypingIndicatorAnimation(
+    modifier: Modifier = Modifier,
+    dotColor: Color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), // Ajuste alpha se quiser
+    dotSize: Dp = 8.dp,
+    spaceBetweenDots: Dp = 4.dp,
+    bounceHeight: Dp = 6.dp
+) {
+    val dots = listOf(remember { Animatable(0f) }, remember { Animatable(0f) }, remember { Animatable(0f) })
+    val bounceHeightPx = with(LocalDensity.current) { bounceHeight.toPx() }
+
+    dots.forEachIndexed { index, animatable ->
+        LaunchedEffect(animatable) {
+            delay(index * 140L) // Aumenta um pouco o delay para ficar mais suave
+            animatable.animateTo(
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = keyframes {
+                        durationMillis = 1000 // Duração um pouco maior
+                        0f at 0 using LinearOutSlowInEasing
+                        -bounceHeightPx at 250 using LinearOutSlowInEasing // Ajusta timing do pulo
+                        0f at 500 using LinearOutSlowInEasing
+                        0f at 1000
+                    },
+                    repeatMode = RepeatMode.Restart
+                )
+            )
+        }
+    }
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        dots.forEachIndexed { index, animatable ->
+            if (index != 0) {
+                Spacer(modifier = Modifier.width(spaceBetweenDots))
+            }
+            Box(
+                modifier = Modifier
+                    .size(dotSize)
+                    // Aplica a animação de deslocamento vertical
+                    .graphicsLayer { translationY = animatable.value }
+                    .background(color = dotColor, shape = CircleShape)
+            )
+        }
+    }
+}
+
+/**
+ * Composable que encapsula a animação de digitação dentro de uma bolha estilo BOT.
+ */
+@Composable
+fun TypingBubbleAnimation(modifier: Modifier = Modifier) {
+    val bubbleColor = MaterialTheme.colorScheme.surfaceVariant // Cor de fundo da bolha do BOT
+    val shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 0.dp, bottomEnd = 16.dp)
+
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.Start // Alinha à esquerda
+    ) {
+        Box(
+            modifier = Modifier
+                .wrapContentWidth(Alignment.Start) // Garante que o box não estique desnecessariamente
+                .defaultMinSize(minHeight = 40.dp) // Altura mínima para a bolha
+                .clip(shape)
+                .background(bubbleColor)
+                .padding(horizontal = 16.dp, vertical = 10.dp), // Padding interno
+            contentAlignment = Alignment.Center // Centraliza a animação
+        ) {
+            TypingIndicatorAnimation() // A animação dos 3 pontos
+        }
+    }
+}
+
+
+/**
+ * Preview atualizado para usar TypingBubbleAnimation.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Preview(showSystemUi = true)
 @Composable
 fun ChatScreenPreview() {
-    // Fornece um estado de exemplo para o preview
     val previewUiState = ChatUiState(
         messages = listOf(
-            ChatMessage("Olá! Como posso ajudar?", Sender.BOT),
-            ChatMessage("Estou me sentindo um pouco ansioso hoje.", Sender.USER),
-            ChatMessage("Entendo. Respire fundo. Quer tentar um exercício de respiração?", Sender.BOT)
-        )
+            ChatMessage("Olá!", Sender.BOT),
+            ChatMessage("Tudo bem?", Sender.USER),
+        ),
+        loadingState = LoadingState.LOADING // Simula estado de carregamento
     )
 
-    // É importante envolver o preview com o seu tema
     MenteSaTheme {
-        // Simula a estrutura do Scaffold para o preview
         Scaffold(
-            bottomBar = { MessageInput(message = "Test message", onMessageChange = {}, onSendClick = {}, isSendingEnabled = true) }
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = { Text("Mente Sã") },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Color.Black,
+                        titleContentColor = Color.White
+                    )
+                )
+            },
+            bottomBar = { MessageInput(message = "", onMessageChange = {}, onSendClick = {}, isSendEnabled = previewUiState.loadingState != LoadingState.LOADING) }
         ) { paddingValues ->
             LazyColumn(
                 modifier = Modifier
                     .padding(paddingValues)
                     .fillMaxSize(),
-                state = rememberLazyListState(), // Precisa de um estado para o preview
-                contentPadding = PaddingValues(horizontal = 16.dp) // Padding para a lista
+                state = rememberLazyListState(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 items(previewUiState.messages) { msg ->
                     MessageBubble(message = msg)
                 }
-                // Adiciona um preview do estado de loading
-                item {
-                    MessageBubble(ChatMessage("...", Sender.BOT, isPending = true))
+                // Mostra a bolha de digitação no preview se estiver carregando
+                if (previewUiState.loadingState == LoadingState.LOADING) {
+                    item { TypingBubbleAnimation() }
                 }
             }
         }

@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.MenteSa" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.MenteSa" parent="android:Theme.Material.Light.NoActionBar">
+    </style>
+
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/cor_fundo_splash</item>
+
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+
+        <item name="postSplashScreenTheme">@style/Theme.MenteSa</item>
+    </style>
+
 </resources>

@@ -1,173 +1,188 @@
 package com.example.mentesa
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.GenerateContentResponse
 import com.google.ai.client.generativeai.type.RequestOptions
-import com.google.ai.client.generativeai.type.content // Mantenha este import
+import com.google.ai.client.generativeai.type.content
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+// Removido: import kotlinx.coroutines.withContext (se não for mais usado)
 
-// Enum LoadingState e data class ChatUiState permanecem os mesmos
+// Imports para ChatMessage e Sender (ajuste o pacote se necessário)
+import com.example.mentesa.ChatMessage
+import com.example.mentesa.Sender
+
+
 enum class LoadingState {
     IDLE, LOADING, ERROR
 }
 
+// ChatUiState não precisa mais de isPending
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val loadingState: LoadingState = LoadingState.IDLE,
     val errorMessage: String? = null
 )
 
-class ChatViewModel : ViewModel() {
+private const val MAX_HISTORY_MESSAGES = 20
+
+class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState: MutableStateFlow<ChatUiState> =
-        MutableStateFlow(ChatUiState()) // Começa vazio
+        MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> =
         _uiState.asStateFlow()
 
-    // --- INÍCIO DAS MUDANÇAS ---
+    // Removido: DAO do Room (voltamos ao estado sem persistência)
 
-    // Constante com o Prompt Base do MenteSã (SEU PROMPT COMPLETO AQUI!)
     private val menteSaSystemPrompt = """
-    Você é o MenteSã, um chatbot de inteligência artificial especializado em oferecer suporte emocional e ferramentas psicoeducativas para pessoas que enfrentam transtornos mentais, como transtorno bipolar, ansiedade e depressão.
-
-    🎯 Missão Principal
-    Criar um ambiente seguro, empático e sem julgamentos, onde os usuários possam:
-
-    Expressar sentimentos e pensamentos com liberdade.
-    Obter informações confiáveis sobre saúde mental.
-    Aprender estratégias práticas baseadas em Terapia Cognitivo-Comportamental (TCC).
-    Ser encorajados a buscar ajuda profissional quando necessário.
-
-    🧠 Funções e Diretrizes Comportamentais
-    🩺 Psicoeducação com Base Científica
-    Forneça informações atualizadas, baseadas em fontes confiáveis (DSM-5, CID-11, artigos revisados por pares, diretrizes clínicas).
-    Adote linguagem clara, sensível e acessível, evitando jargões médicos sempre que possível.
-
-    🛠️ Técnicas Baseadas em Evidência (TCC)
-    Ensine e incentive o uso de técnicas como:
-    Reestruturação cognitiva.
-    Identificação de pensamentos automáticos.
-    Exposição gradual (fobias e ansiedade).
-    Ativação comportamental (depressão).
-    Resolução de problemas.
-    Técnicas de relaxamento (mindfulness, respiração diafragmática).
-    Regulação emocional e habilidades sociais.
-
-    📊 Monitoramento Pessoal
-    Auxilie o usuário a rastrear sintomas, gatilhos, humor e padrões comportamentais.
-    Utilize ferramentas como diários de humor ou escalas simples (ex: Escala de Humor de 0 a 10).
-
-    🤝 Incentivo ao Cuidado Profissional e Recursos de Apoio
-    Oriente o usuário, de forma respeitosa, sobre a importância da ajuda especializada.
-    Forneça informações sobre linhas de apoio, psicólogos, psiquiatras e grupos de suporte.
-
-    🌿 Promoção de Autocuidado
-    Stimule hábitos saudáveis (sono, alimentação, exercícios, lazer, conexão social).
-
-    🔐 Princípios Éticos
-    Privacidade: Respeite e proteja os dados do usuário conforme a LGPD e o GDPR.
-    Transparência: Deixe claro que você é uma IA, sem substituir diagnóstico ou tratamento humano.
-    Linguagem cautelosa: Nunca afirme diagnósticos. Use expressões como: “Esses sintomas podem estar relacionados a...” ou “É importante conversar com um profissional sobre isso.”
-    Evite generalizações: Reconheça a individualidade de cada pessoa e evite frases como “todo depressivo...”.
-    Jamais incentive comportamentos disfuncionais: Não valide ações como automutilação, abuso de substâncias ou isolamento social.
-
-    🧍‍♂️ Persona do Chatbot: MenteSã
-    Empático e compassivo – Valida emoções com cuidado e respeito.
-    Paciente e encorajador – Oferece apoio constante, mesmo em momentos difíceis.
-    Não julgador – Aceita o usuário como ele é.
-    Confiável e seguro – Transmite acolhimento e profissionalismo.
-    Adaptável – Modula a linguagem e abordagem conforme o perfil do usuário.
-
-    🗣️ Tom de Voz
-    Calmo, gentil, acolhedor e respeitoso.
-    Esperançoso, mas sempre realista.
-    Livre de imposições, orientado por perguntas abertas e apoio gradual.
-
-    💬 Exemplo de Interação Inicial (usaremos esta parte para a mensagem de boas-vindas)
-    MenteSã:
-    "Olá! Eu sou o MenteSã, seu assistente virtual de saúde mental. Estou aqui para te acompanhar com empatia e respeito na sua jornada de bem-estar. Como você está se sentindo hoje?"
+    {... Cole o seu prompt base completo aqui ...}
     """.trimIndent()
 
-    // Mensagem de boas-vindas a ser exibida inicialmente
-    private val welcomeMessage = "Olá! Eu sou o MenteSã, seu assistente virtual de saúde mental. Estou aqui para te acompanhar com empatia e respeito na sua jornada de bem-estar. Como você está se sentindo hoje?"
+    private val welcomeMessageText = "Olá! Eu sou o MenteSã, seu assistente virtual de saúde mental. Estou aqui para te acompanhar com empatia e respeito na sua jornada de bem-estar. Como você está se sentindo hoje?"
 
-    // Inicialização do Modelo Generativo Gemini
-    // **MUDANÇA:** Usando 'systemInstruction' para definir o comportamento do bot
+    // Inicialização do Modelo Generativo Gemini (com chave hardcoded temporária)
     private val generativeModel = GenerativeModel(
-        modelName = "gemini-1.5-flash", // Mantendo flash por enquanto
-        apiKey = BuildConfig.apiKey,
-        systemInstruction = content { text(menteSaSystemPrompt) }, // Define o prompt base como instrução do sistema
+        modelName = "gemini-1.5-flash", // Ou "gemini-2.5-pro-exp-03-25"
+        apiKey = "AIzaSyB6d6F-Dex-lS-B2CXySlYSQayiSSI9ms0", // <<< CHAVE HARDCODED TEMPORÁRIA
+        systemInstruction = content { text(menteSaSystemPrompt) },
         requestOptions = RequestOptions(timeout = 60000)
     )
 
-    // Bloco de inicialização do ViewModel
     init {
-        // Adiciona a mensagem de boas-vindas à lista inicial
-        _uiState.update {
-            it.copy(messages = listOf(ChatMessage(welcomeMessage, Sender.BOT)))
+        // Adiciona mensagem de boas vindas inicial se estado estiver vazio
+        if (_uiState.value.messages.isEmpty()) {
+            _uiState.update {
+                it.copy(messages = listOf(ChatMessage(welcomeMessageText, Sender.BOT)))
+            }
         }
     }
 
     /**
-     * Envia a mensagem do usuário para a API Gemini e atualiza o estado da UI.
+     * Envia a mensagem do usuário para a API Gemini USANDO STREAMING e incluindo histórico,
+     * atualizando a UI incrementalmente.
      * @param userMessage O texto digitado pelo usuário.
      */
     fun sendMessage(userMessage: String) {
-        if (userMessage.isBlank()) {
+        if (userMessage.isBlank() || _uiState.value.loadingState == LoadingState.LOADING) {
             return
         }
 
-        // Adiciona a mensagem do usuário à lista e define o estado como Loading
+        val currentMessagesForHistory = _uiState.value.messages // Histórico antes da nova msg
+        val userUiMsg = ChatMessage(userMessage, Sender.USER)
+
+        // Atualiza UI apenas com msg do usuário e estado LOADING
+        // Não adicionamos mais a msg "pendente" aqui
         _uiState.update { currentState ->
             currentState.copy(
-                messages = currentState.messages + ChatMessage(userMessage, Sender.USER),
+                messages = currentState.messages + userUiMsg,
                 loadingState = LoadingState.LOADING,
                 errorMessage = null
             )
         }
 
-        // **MUDANÇA:** Não precisamos mais concatenar o systemPrompt aqui.
-        // A API usará o systemInstruction definido na inicialização.
-        // Para conversas com contexto (multi-turn), precisaríamos enviar o histórico aqui.
-        // Por enquanto, enviaremos apenas a mensagem atual do usuário.
+        // Prepara histórico para API (sem filtrar isPending, pois não existe mais)
+        val historyForApi = mapMessagesToApiHistory(currentMessagesForHistory)
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // **MUDANÇA:** Gera conteúdo apenas com a mensagem do usuário atual.
-                // Se usar chat history, a chamada seria diferente (ex: model.startChat().sendMessage(...))
-                val response: GenerateContentResponse = generativeModel.generateContent(
-                    content { // O 'role' aqui é 'user' por padrão quando só há um 'text'
-                        text(userMessage)
-                    }
+                val chat = generativeModel.startChat(history = historyForApi)
+
+                // --- MUDANÇA PRINCIPAL: USA sendMessageStream ---
+                val responseFlow: Flow<GenerateContentResponse> = chat.sendMessageStream(
+                    content(role = "user") { text(userMessage) }
                 )
 
-                // Processa a resposta (igual a antes)
-                response.text?.let { outputContent ->
-                    _uiState.update { currentState ->
-                        currentState.copy(
-                            messages = currentState.messages + ChatMessage(outputContent, Sender.BOT),
-                            loadingState = LoadingState.IDLE
-                        )
-                    }
-                } ?: throw Exception("Resposta da API vazia.")
+                var botMessageIndex = -1 // Índice da msg do Bot na lista da UI
+                var currentBotText = ""  // Texto acumulado
 
-            } catch (e: Exception) {
-                // Tratamento de erro (igual a antes)
+                responseFlow
+                    .catch { e -> // Tratamento de erro no Flow
+                        Log.e("ChatViewModel", "Streaming Error", e)
+                        _uiState.update { currentState ->
+                            // Remove a msg parcial do bot se existir e houve erro
+                            val messagesWithError = if (botMessageIndex != -1 && botMessageIndex < currentState.messages.size) {
+                                currentState.messages.subList(0, botMessageIndex)
+                            } else {
+                                currentState.messages
+                            }
+                            currentState.copy(
+                                loadingState = LoadingState.ERROR,
+                                errorMessage = e.localizedMessage ?: "Erro durante a resposta da IA.",
+                                messages = messagesWithError
+                            )
+                        }
+                    }
+                    .onCompletion { cause -> // Ao completar (com ou sem erro)
+                        // Seta IDLE APENAS se o estado ainda for LOADING
+                        // (para não sobrescrever o estado ERROR definido no catch)
+                        if (_uiState.value.loadingState == LoadingState.LOADING) {
+                            _uiState.update { it.copy(loadingState = LoadingState.IDLE) }
+                        }
+                        Log.d("ChatViewModel", "Streaming completed. Cause: $cause")
+                    }
+                    .collect { chunk -> // Processa cada chunk
+                        chunk.text?.let { textPart ->
+                            currentBotText += textPart // Acumula texto
+
+                            if (botMessageIndex == -1) {
+                                // PRIMEIRO CHUNK: Adiciona a nova mensagem do BOT (ainda incompleta)
+                                val newBotMsg = ChatMessage(currentBotText, Sender.BOT)
+                                _uiState.update { currentState ->
+                                    val newMessages = currentState.messages + newBotMsg
+                                    botMessageIndex = newMessages.lastIndex // Guarda o índice
+                                    currentState.copy(messages = newMessages)
+                                }
+                            } else {
+                                // CHUNKS SEGUINTES: Atualiza a mensagem existente do BOT
+                                val updatedBotMsg = ChatMessage(currentBotText, Sender.BOT)
+                                _uiState.update { currentState ->
+                                    val updatedMessages = currentState.messages.toMutableList()
+                                    if (botMessageIndex < updatedMessages.size) {
+                                        updatedMessages[botMessageIndex] = updatedBotMsg
+                                    }
+                                    currentState.copy(messages = updatedMessages)
+                                }
+                            }
+                        }
+                    }
+                // --- FIM DA COLETA DO STREAM ---
+
+            } catch (e: Exception) { // Erro geral (ex: startChat falha)
+                Log.e("ChatViewModel", "Error sending message context", e)
                 _uiState.update { currentState ->
                     currentState.copy(
                         loadingState = LoadingState.ERROR,
-                        errorMessage = e.localizedMessage ?: "Erro desconhecido"
+                        errorMessage = e.localizedMessage ?: "Erro na comunicação com a IA."
                     )
+                }
+            } finally {
+                // Garante que IDLE seja setado se algo der muito errado fora do flow
+                if (_uiState.value.loadingState != LoadingState.IDLE && _uiState.value.loadingState != LoadingState.ERROR) {
+                    _uiState.update { it.copy(loadingState = LoadingState.IDLE) }
                 }
             }
         }
     }
-    // --- FIM DAS MUDANÇAS ---
+}
+
+// Removido: saveMessageToDb, mappers de/para Entity
+
+/** Mapeia histórico da UI (memória) para o formato da API Gemini */
+private fun mapMessagesToApiHistory(messages: List<ChatMessage>): List<Content> {
+    return messages
+        // Removido: .filterNot { it.isPending }
+        .takeLast(MAX_HISTORY_MESSAGES)
+        .map { msg ->
+            content(role = if (msg.sender == Sender.USER) "user" else "model") {
+                text(msg.text)
+            }
+        }
 }
