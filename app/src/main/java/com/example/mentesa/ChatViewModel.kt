@@ -2,20 +2,26 @@ package com.example.mentesa
 
 import android.app.Application
 import android.util.Log
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.AndroidViewModel // Precisa ser AndroidViewModel para o Contexto
+import androidx.lifecycle.viewModelScope // Import necessário
+import com.example.mentesa.BuildConfig // Import do BuildConfig (manual)
 import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.GenerateContentResponse
 import com.google.ai.client.generativeai.type.RequestOptions
 import com.google.ai.client.generativeai.type.content
+// --- IMPORTS DO ROOM ---
+// Certifique-se que o pacote está correto!
+import com.example.mentesa.data.db.AppDatabase
+import com.example.mentesa.data.db.ChatDao
+import com.example.mentesa.data.db.ChatMessageEntity
+// --- FIM IMPORTS ROOM ---
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-// Removido: import kotlinx.coroutines.withContext (se não for mais usado)
 
-// Imports para ChatMessage e Sender (ajuste o pacote se necessário)
+// Imports para ChatMessage e Sender (devem existir no seu projeto)
 import com.example.mentesa.ChatMessage
 import com.example.mentesa.Sender
 
@@ -24,14 +30,14 @@ enum class LoadingState {
     IDLE, LOADING, ERROR
 }
 
-// ChatUiState não precisa mais de isPending
+// ChatUiState não usa mais isPending
 data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val loadingState: LoadingState = LoadingState.IDLE,
     val errorMessage: String? = null
 )
 
-private const val MAX_HISTORY_MESSAGES = 20
+private const val MAX_HISTORY_MESSAGES = 20 // Limite para API
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -40,46 +46,67 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<ChatUiState> =
         _uiState.asStateFlow()
 
-    // Removido: DAO do Room (voltamos ao estado sem persistência)
+    // --- Obtém instância do DAO ---
+    private val chatDao: ChatDao = AppDatabase.getDatabase(application).chatDao()
 
+    // Prompt Base MenteSã
     private val menteSaSystemPrompt = """
     {... Cole o seu prompt base completo aqui ...}
     """.trimIndent()
 
+    // Mensagem de boas-vindas
     private val welcomeMessageText = "Olá! Eu sou o MenteSã, seu assistente virtual de saúde mental. Estou aqui para te acompanhar com empatia e respeito na sua jornada de bem-estar. Como você está se sentindo hoje?"
 
-    // Inicialização do Modelo Generativo Gemini (com chave hardcoded temporária)
+    // Modelo Gemini com chave do BuildConfig
     private val generativeModel = GenerativeModel(
-        modelName = "gemini-1.5-flash", // Ou "gemini-2.5-pro-exp-03-25"
-        apiKey = "AIzaSyB6d6F-Dex-lS-B2CXySlYSQayiSSI9ms0", // <<< CHAVE HARDCODED TEMPORÁRIA
+        modelName = "gemini-1.5-flash", // Ou o modelo que decidiu usar
+        apiKey = BuildConfig.GEMINI_API_KEY, // Acessando via BuildConfig (manual)
         systemInstruction = content { text(menteSaSystemPrompt) },
         requestOptions = RequestOptions(timeout = 60000)
     )
 
     init {
-        // Adiciona mensagem de boas vindas inicial se estado estiver vazio
-        if (_uiState.value.messages.isEmpty()) {
-            _uiState.update {
-                it.copy(messages = listOf(ChatMessage(welcomeMessageText, Sender.BOT)))
-            }
+        // Carrega histórico do banco de dados ao iniciar
+        loadChatHistory()
+    }
+
+    // Carrega histórico do BD usando Flow
+    private fun loadChatHistory() {
+        viewModelScope.launch {
+            chatDao.getAllMessages()
+                .map { entities -> mapEntitiesToUiMessages(entities) }
+                .distinctUntilChanged()
+                .catch { e ->
+                    Log.e("ChatViewModel", "Error loading chat history", e)
+                    _uiState.update { it.copy(errorMessage = "Erro ao carregar histórico: ${e.message}") }
+                }
+                .collect { messagesFromDb ->
+                    // Verifica se precisa adicionar/salvar msg de boas vindas
+                    // (faz isso apenas se o BD estiver vazio na primeira coleta)
+                    if (messagesFromDb.isEmpty() && _uiState.value.messages.isEmpty()) {
+                        val welcomeUiMsg = ChatMessage(welcomeMessageText, Sender.BOT)
+                        saveMessageToDb(welcomeUiMsg) // Salva no BD
+                        // O Flow será emitido novamente pelo Room com a mensagem salva
+                        Log.d("ChatViewModel", "Database was empty, saved welcome message.")
+                    } else {
+                        // Atualiza o estado da UI com as mensagens do BD
+                        _uiState.update { it.copy(messages = messagesFromDb) }
+                        if (messagesFromDb.isNotEmpty()) { // Evita log para o caso inicial vazio antes da msg de boas vindas ser inserida
+                            Log.d("ChatViewModel", "Loaded/Updated ${messagesFromDb.size} messages from DB.")
+                        }
+                    }
+                }
         }
     }
 
-    /**
-     * Envia a mensagem do usuário para a API Gemini USANDO STREAMING e incluindo histórico,
-     * atualizando a UI incrementalmente.
-     * @param userMessage O texto digitado pelo usuário.
-     */
+    // Envia mensagem, atualiza UI, salva no BD, chama API com histórico
     fun sendMessage(userMessage: String) {
-        if (userMessage.isBlank() || _uiState.value.loadingState == LoadingState.LOADING) {
-            return
-        }
+        if (userMessage.isBlank() || _uiState.value.loadingState == LoadingState.LOADING) { return }
 
-        val currentMessagesForHistory = _uiState.value.messages // Histórico antes da nova msg
+        val currentMessagesForHistory = _uiState.value.messages // Pega msgs atuais para histórico da API
         val userUiMsg = ChatMessage(userMessage, Sender.USER)
 
-        // Atualiza UI apenas com msg do usuário e estado LOADING
-        // Não adicionamos mais a msg "pendente" aqui
+        // 1. Atualiza UI com mensagem do usuário e Loading
         _uiState.update { currentState ->
             currentState.copy(
                 messages = currentState.messages + userUiMsg,
@@ -87,102 +114,119 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 errorMessage = null
             )
         }
+        // 2. Salva mensagem do usuário no BD
+        saveMessageToDb(userUiMsg)
 
-        // Prepara histórico para API (sem filtrar isPending, pois não existe mais)
+        // 3. Prepara histórico para API (com base nas mensagens ANTES da atual do user)
         val historyForApi = mapMessagesToApiHistory(currentMessagesForHistory)
 
+        // 4. Chama API em background
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val chat = generativeModel.startChat(history = historyForApi)
+                val responseFlow: Flow<GenerateContentResponse> = chat.sendMessageStream(content(role = "user") { text(userMessage) })
 
-                // --- MUDANÇA PRINCIPAL: USA sendMessageStream ---
-                val responseFlow: Flow<GenerateContentResponse> = chat.sendMessageStream(
-                    content(role = "user") { text(userMessage) }
-                )
-
-                var botMessageIndex = -1 // Índice da msg do Bot na lista da UI
-                var currentBotText = ""  // Texto acumulado
+                var botMessageIndex = -1
+                var currentBotText = ""
+                var finalBotUiMsg: ChatMessage? = null
 
                 responseFlow
-                    .catch { e -> // Tratamento de erro no Flow
+                    .catch { e -> /* ... Lógica de erro do stream ... */
                         Log.e("ChatViewModel", "Streaming Error", e)
                         _uiState.update { currentState ->
-                            // Remove a msg parcial do bot se existir e houve erro
-                            val messagesWithError = if (botMessageIndex != -1 && botMessageIndex < currentState.messages.size) {
-                                currentState.messages.subList(0, botMessageIndex)
-                            } else {
-                                currentState.messages
-                            }
+                            // Reverte UI para estado ANTES da msg do usuário ser adicionada
                             currentState.copy(
                                 loadingState = LoadingState.ERROR,
                                 errorMessage = e.localizedMessage ?: "Erro durante a resposta da IA.",
-                                messages = messagesWithError
+                                messages = currentMessagesForHistory // Reverte a lista
                             )
                         }
                     }
-                    .onCompletion { cause -> // Ao completar (com ou sem erro)
-                        // Seta IDLE APENAS se o estado ainda for LOADING
-                        // (para não sobrescrever o estado ERROR definido no catch)
-                        if (_uiState.value.loadingState == LoadingState.LOADING) {
-                            _uiState.update { it.copy(loadingState = LoadingState.IDLE) }
+                    .onCompletion { cause ->
+                        if (cause == null) {
+                            // Sucesso: Salva a mensagem COMPLETA do bot no BD
+                            finalBotUiMsg?.let { saveMessageToDb(it) }
                         }
+                        // Sempre volta para IDLE após stream (catch trata o ERROR)
+                        _uiState.update { it.copy(loadingState = LoadingState.IDLE) }
                         Log.d("ChatViewModel", "Streaming completed. Cause: $cause")
                     }
-                    .collect { chunk -> // Processa cada chunk
+                    .collect { chunk ->
                         chunk.text?.let { textPart ->
-                            currentBotText += textPart // Acumula texto
+                            currentBotText += textPart
+                            val botUiMsgInProgress = ChatMessage(currentBotText, Sender.BOT)
+                            finalBotUiMsg = botUiMsgInProgress // Guarda a última versão
 
-                            if (botMessageIndex == -1) {
-                                // PRIMEIRO CHUNK: Adiciona a nova mensagem do BOT (ainda incompleta)
-                                val newBotMsg = ChatMessage(currentBotText, Sender.BOT)
+                            if (botMessageIndex == -1) { // Primeiro chunk
                                 _uiState.update { currentState ->
-                                    val newMessages = currentState.messages + newBotMsg
-                                    botMessageIndex = newMessages.lastIndex // Guarda o índice
+                                    // Adiciona a nova msg do bot (incompleta)
+                                    // Note: currentState.messages aqui JÁ contém a msg do user adicionada antes do launch
+                                    val newMessages = currentState.messages + botUiMsgInProgress
+                                    botMessageIndex = newMessages.lastIndex
                                     currentState.copy(messages = newMessages)
                                 }
-                            } else {
-                                // CHUNKS SEGUINTES: Atualiza a mensagem existente do BOT
-                                val updatedBotMsg = ChatMessage(currentBotText, Sender.BOT)
+                            } else { // Chunks seguintes
                                 _uiState.update { currentState ->
+                                    // Atualiza a msg do bot existente na lista
                                     val updatedMessages = currentState.messages.toMutableList()
                                     if (botMessageIndex < updatedMessages.size) {
-                                        updatedMessages[botMessageIndex] = updatedBotMsg
+                                        updatedMessages[botMessageIndex] = botUiMsgInProgress
                                     }
                                     currentState.copy(messages = updatedMessages)
                                 }
                             }
                         }
                     }
-                // --- FIM DA COLETA DO STREAM ---
-
-            } catch (e: Exception) { // Erro geral (ex: startChat falha)
+            } catch (e: Exception) { // Erro antes do stream (ex: startChat)
                 Log.e("ChatViewModel", "Error sending message context", e)
                 _uiState.update { currentState ->
+                    // Reverte UI para estado ANTES da msg do usuário
                     currentState.copy(
                         loadingState = LoadingState.ERROR,
-                        errorMessage = e.localizedMessage ?: "Erro na comunicação com a IA."
+                        errorMessage = e.localizedMessage ?: "Erro na comunicação com a IA.",
+                        messages = currentMessagesForHistory
                     )
-                }
-            } finally {
-                // Garante que IDLE seja setado se algo der muito errado fora do flow
-                if (_uiState.value.loadingState != LoadingState.IDLE && _uiState.value.loadingState != LoadingState.ERROR) {
-                    _uiState.update { it.copy(loadingState = LoadingState.IDLE) }
                 }
             }
         }
     }
-}
 
-// Removido: saveMessageToDb, mappers de/para Entity
-
-/** Mapeia histórico da UI (memória) para o formato da API Gemini */
-private fun mapMessagesToApiHistory(messages: List<ChatMessage>): List<Content> {
-    return messages
-        // Removido: .filterNot { it.isPending }
-        .takeLast(MAX_HISTORY_MESSAGES)
-        .map { msg ->
-            content(role = if (msg.sender == Sender.USER) "user" else "model") {
-                text(msg.text)
+    // Função para salvar no BD
+    private fun saveMessageToDb(message: ChatMessage) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val entity = mapUiMessageToEntity(message)
+            try {
+                chatDao.insertMessage(entity) // Usa chatDao
+                Log.d("ChatViewModel", "Message inserted to DB: ${entity.text.take(30)}...")
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "Error inserting message into DB", e)
             }
         }
+    }
+
+    // Funções de Mapeamento (UI <-> Entidade BD)
+    private fun mapEntitiesToUiMessages(entities: List<ChatMessageEntity>): List<ChatMessage> {
+        return entities.map { entity ->
+            ChatMessage(
+                text = entity.text,
+                sender = try { enumValueOf<Sender>(entity.sender.uppercase()) }
+                catch (e: IllegalArgumentException) { Sender.BOT } // Default seguro
+            )
+        }
+    }
+
+    private fun mapUiMessageToEntity(message: ChatMessage): ChatMessageEntity {
+        return ChatMessageEntity(
+            text = message.text,
+            sender = message.sender.name, // Converte Enum para String
+            timestamp = System.currentTimeMillis() // Gera timestamp ao salvar
+        )
+    }
+
+    // Mapper para Histórico da API (usando ChatMessage da UI/memória)
+    private fun mapMessagesToApiHistory(messages: List<ChatMessage>): List<Content> {
+        return messages
+            .takeLast(MAX_HISTORY_MESSAGES)
+            .map { msg -> content(role = if (msg.sender == Sender.USER) "user" else "model") { text(msg.text) } }
+    }
 }
