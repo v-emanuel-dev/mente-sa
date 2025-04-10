@@ -3,9 +3,7 @@ package com.example.mentesa
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope // Import necessário
-import com.example.mentesa.BuildConfig // Import do BuildConfig (manual)
-import com.google.ai.client.generativeai.Chat
+import androidx.lifecycle.viewModelScope
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.GenerateContentResponse
@@ -16,22 +14,18 @@ import com.example.mentesa.data.db.AppDatabase
 import com.example.mentesa.data.db.ChatDao
 import com.example.mentesa.data.db.ChatMessageEntity
 import com.example.mentesa.data.db.ConversationInfo
-import com.example.mentesa.data.db.ConversationMetadataDao // <<-- Import DAO metadados
-import com.example.mentesa.data.db.ConversationMetadataEntity // <<-- Import Entidade metadados
+import com.example.mentesa.data.db.ConversationMetadataDao
+import com.example.mentesa.data.db.ConversationMetadataEntity
 // --- FIM IMPORTS ROOM ---
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.* // Necessário para flowOf, SharingStarted, combine, mapLatest
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-// Imports para ChatMessage e Sender
-import com.example.mentesa.ChatMessage
-import com.example.mentesa.Sender
 
 // --- NOVA DATA CLASS (pode ficar aqui ou em arquivo separado) ---
 /**
@@ -45,7 +39,6 @@ data class ConversationDisplayItem(
 )
 // --- FIM NOVA DATA CLASS ---
 
-
 // Enum para estado de carregamento
 enum class LoadingState { IDLE, LOADING, ERROR }
 
@@ -53,14 +46,13 @@ enum class LoadingState { IDLE, LOADING, ERROR }
 const val NEW_CONVERSATION_ID = -1L
 private const val MAX_HISTORY_MESSAGES = 20
 
-
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // Instâncias dos DAOs
     private val appDb = AppDatabase.getDatabase(application)
     private val chatDao: ChatDao = appDb.chatDao()
-    private val metadataDao: ConversationMetadataDao = appDb.conversationMetadataDao() // <<-- OBTÉM NOVO DAO
+    private val metadataDao: ConversationMetadataDao = appDb.conversationMetadataDao()
 
     // --- StateFlows Expostos para a UI ---
     private val _currentConversationId = MutableStateFlow<Long?>(null)
@@ -93,19 +85,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             emit(emptyList())
         }
 
-    // --- NOVO STATEFLOW COMBINADO PARA A UI DO DRAWER ---
-    /**
-     * Combina o Flow da lista de conversas (ID, Timestamp) com o Flow de metadados (títulos)
-     * para produzir uma lista de [ConversationDisplayItem] pronta para a UI.
-     * Reage a mudanças em ambas as tabelas. Usa SharingStarted.Eagerly para updates rápidos.
-     */
+    // --- STATEFLOW COMBINADO PARA A UI DO DRAWER ---
     val conversationListForDrawer: StateFlow<List<ConversationDisplayItem>> =
         combine(rawConversationsFlow, metadataFlow) { conversations, metadataList ->
             Log.d("ChatViewModel", "Combining ${conversations.size} convs and ${metadataList.size} metadata entries.")
             val metadataMap = metadataList.associateBy({ it.conversationId }, { it.customTitle })
 
             // Mapeia cada ConversationInfo para ConversationDisplayItem
-            // Usar map normal e chamar generateFallbackTitle (suspend) para cada item
             conversations.map { convInfo ->
                 val customTitle = metadataMap[convInfo.id]?.takeIf { it.isNotBlank() }
                 // Chama função suspend helper para obter título fallback (acessa DB)
@@ -118,10 +104,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
-            .flowOn(Dispatchers.Default) // Combine/map pode usar Default dispatcher
+            .flowOn(Dispatchers.Default)
             .catch { e ->
                 Log.e("ChatViewModel", "Error combining conversations and metadata", e)
-                // Define erro na thread principal se o combine falhar
                 withContext(Dispatchers.Main.immediate) {
                     _errorMessage.value = "Erro ao processar lista de conversas para exibição."
                 }
@@ -129,10 +114,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
             .stateIn(
                 scope = viewModelScope,
-                started = SharingStarted.Eagerly, // Garante reatividade na UI
-                initialValue = emptyList() // Começa vazio
+                started = SharingStarted.Eagerly,
+                initialValue = emptyList()
             )
-    // --- FIM DO NOVO STATEFLOW ---
 
 
     // Definição do messages (com saudação inicial e estrutura do 'when' corrigida)
@@ -150,7 +134,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     .catch { e ->
                         Log.e("ChatViewModel", "Error loading messages for conversation $convId", e)
-                        // Define erro na thread principal
                         withContext(Dispatchers.Main.immediate) {
                             _errorMessage.value = "Erro ao carregar mensagens da conversa."
                         }
@@ -166,8 +149,58 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // Mensagem de boas vindas
     private val welcomeMessageText = "Olá! 😊 Eu sou o Mente Sã, seu assistente virtual de saúde mental, e é um prazer te conhecer. Como você está se sentindo hoje? Estou aqui para te acompanhar com empatia e respeito, oferecendo um espaço seguro e acolhedor para você se expressar. Existe algo em particular que gostaria de conversar ou explorar?"
 
-    // Prompt Base
-    private val menteSaSystemPrompt = """...""".trimIndent() // SEU PROMPT AQUI
+    // ATUALIZADO: Prompt Base com restrições de tópico
+    private val menteSaSystemPrompt = """
+        Você é o Mente Sã, um assistente virtual especializado exclusivamente em saúde mental. 
+
+        LIMITAÇÕES IMPORTANTES:
+        1. Você DEVE se recusar a responder qualquer pergunta não relacionada à saúde mental.
+        2. NÃO responda perguntas sobre física, química, matemática, história, geografia, esportes, entretenimento ou qualquer outro assunto não diretamente relacionado à saúde mental.
+        3. Quando o usuário fizer uma pergunta fora do escopo, responda educadamente: "Desculpe, sou especializado apenas em temas de saúde mental. Posso ajudar você com ansiedade, depressão, técnicas de autocuidado ou outros assuntos relacionados ao bem-estar emocional."
+        4. Nunca forneça respostas parciais a tópicos fora do escopo, mesmo que pareçam ter alguma conexão.
+
+        TÓPICOS PERMITIDOS:
+        - Ansiedade, depressão, estresse e outras condições de saúde mental
+        - Técnicas de meditação e mindfulness
+        - Métodos de autocuidado e bem-estar emocional
+        - Comunicação saudável e relacionamentos interpessoais
+        - Sono e sua relação com a saúde mental
+        - Exercícios e alimentação no contexto da saúde mental
+        - Prograamação
+
+        Mantenha suas respostas empáticas, acolhedoras e focadas em apoiar o bem-estar mental do usuário.
+    """.trimIndent()
+
+    // NOVA FUNÇÃO: Detectar tópicos proibidos
+    private fun isProhibitedTopic(message: String): Boolean {
+        val prohibitedKeywords = listOf(
+            "física", "química", "matemática", "história", "geografia",
+            "esportes", "futebol", "basquete", "filme", "novela", "série",
+            "equação", "fórmula", "newton", "einstein", "átomo", "planeta",
+            "astronomia", "galáxia", "guerra", "política", "economia",
+            "programação", "computador", "código", "app", "desenvolvimento",
+            "presidente", "eleição", "partido", "língua", "gramática"
+        )
+
+        return prohibitedKeywords.any {
+            message.lowercase().contains(it.lowercase())
+        }
+    }
+
+    // NOVA FUNÇÃO: Verificar respostas do bot
+    private fun isValidResponse(response: String): Boolean {
+        val prohibitedPatterns = listOf(
+            "na física", "em física", "a física", "física é",
+            "fórmula", "equação", "cálculo de", "matemática",
+            "história", "guerra mundial", "presidente", "governador",
+            "astronomia", "planeta", "computação", "programação",
+            "código fonte", "esporte", "time", "filme", "série"
+        )
+
+        return !prohibitedPatterns.any {
+            response.lowercase().contains(it.lowercase())
+        }
+    }
 
     // Modelo Gemini
     private val generativeModel = GenerativeModel(
@@ -184,13 +217,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // Lógica de inicialização (agora usa o flow combinado)
     private fun loadInitialConversationOrStartNew() {
         viewModelScope.launch {
-            // Espera um pouco para o StateFlow combinado ter chance de emitir
-            delay(150) // Aumentar ligeiramente o delay pode ajudar com Eagerly/combine
+            delay(150)
             val initialDisplayList = conversationListForDrawer.value
             Log.d("ChatViewModel", "[Init] Initial display list check (using .value): ${initialDisplayList.size}")
             val latestConversationId = initialDisplayList.firstOrNull()?.id
             if (_currentConversationId.value == null) {
-                // Define como nulo se não houver conversas, ou o ID da última
                 _currentConversationId.value = latestConversationId
                 Log.i("ChatViewModel", "[Init] Setting initial conversation ID to: ${_currentConversationId.value}")
             } else {
@@ -201,7 +232,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Funções Chamadas pela UI ---
 
-    // startNewConversation (Completa)
+    // startNewConversation
     fun startNewConversation() {
         if (_currentConversationId.value != NEW_CONVERSATION_ID) {
             Log.i("ChatViewModel", "Action: Starting new conversation flow")
@@ -213,7 +244,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // selectConversation (Completa)
+    // selectConversation
     fun selectConversation(conversationId: Long) {
         if (conversationId != _currentConversationId.value && conversationId != NEW_CONVERSATION_ID) {
             Log.i("ChatViewModel", "Action: Selecting conversation $conversationId")
@@ -227,7 +258,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // sendMessage (Completa)
+    // ATUALIZADO: sendMessage com validação de tópico
     fun sendMessage(userMessageText: String) {
         if (userMessageText.isBlank()) {
             Log.w("ChatViewModel", "sendMessage cancelled: Empty message.")
@@ -273,6 +304,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val userUiMessage = ChatMessage(userMessageText, Sender.USER)
         saveMessageToDb(userUiMessage, targetConversationId, timestamp)
 
+        // NOVO: Verificar tópicos proibidos
+        if (isProhibitedTopic(userMessageText)) {
+            Log.w("ChatViewModel", "Prohibited topic detected: '${userMessageText.take(50)}...'")
+
+            // Responde automaticamente sem chamar a API
+            val botResponse = "Desculpe, sou especializado apenas em temas de saúde mental. Posso ajudar você com ansiedade, depressão, técnicas de autocuidado ou outros assuntos relacionados ao bem-estar emocional."
+            saveMessageToDb(ChatMessage(botResponse, Sender.BOT), targetConversationId)
+            _loadingState.value = LoadingState.IDLE
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val currentMessagesFromDb = chatDao.getMessagesForConversation(targetConversationId).first()
@@ -302,7 +344,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // 1. Deleta as mensagens
                 chatDao.clearConversation(conversationId)
                 // 2. Deleta os metadados (título personalizado)
-                metadataDao.deleteMetadata(conversationId) // <<-- DELETA METADADOS
+                metadataDao.deleteMetadata(conversationId)
 
                 Log.i("ChatViewModel", "Conversation $conversationId and metadata deleted successfully from DB.")
 
@@ -332,7 +374,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // renameConversation (NOVA FUNÇÃO)
+    // renameConversation
     fun renameConversation(conversationId: Long, newTitle: String) {
         if (conversationId == NEW_CONVERSATION_ID) {
             Log.w("ChatViewModel", "Cannot rename NEW_CONVERSATION_ID.")
@@ -350,10 +392,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val metadata = ConversationMetadataEntity(conversationId = conversationId, customTitle = trimmedTitle)
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                metadataDao.insertOrUpdateMetadata(metadata) // <<-- SALVA NOVO TÍTULO
+                metadataDao.insertOrUpdateMetadata(metadata)
                 Log.i("ChatViewModel", "Conversation $conversationId renamed successfully in DB.")
-                // O Flow 'conversationListForDrawer' que usa 'combine' com 'metadataFlow'
-                // DEVE ser notificado e re-emitir a lista atualizada, fazendo a UI reagir.
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Error renaming conversation $conversationId", e)
                 withContext(Dispatchers.Main) {
@@ -363,8 +403,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
-    // callGeminiApi (Completa)
+    // ATUALIZADO: callGeminiApi com validação de respostas
     private suspend fun callGeminiApi(
         userMessageText: String,
         historyForApi: List<Content>,
@@ -389,6 +428,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     if (cause == null) {
                         Log.i("ChatViewModel", "Stream completed successfully for conv $conversationId.")
                         finalBotResponseText = currentBotText
+
+                        // NOVO: Verificar se a resposta é válida (não contém tópicos proibidos)
+                        if (!finalBotResponseText.isNullOrBlank() && !isValidResponse(finalBotResponseText!!)) {
+                            Log.w("ChatViewModel", "Invalid response detected for conv $conversationId, replacing with fallback")
+                            finalBotResponseText = "Desculpe, não posso fornecer essa informação pois está fora do escopo de saúde mental. Como posso ajudar com seu bem-estar emocional hoje?"
+                        }
                     } else {
                         Log.e("ChatViewModel", "Stream completed with error for conv $conversationId", cause)
                         withContext(Dispatchers.Main) {
@@ -420,8 +465,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
-    // saveMessageToDb (Completa)
+    // saveMessageToDb
     private fun saveMessageToDb(message: ChatMessage, conversationId: Long, timestamp: Long = System.currentTimeMillis()) {
         if (conversationId == NEW_CONVERSATION_ID) {
             Log.e("ChatViewModel", "Attempted to save message with invalid NEW_CONVERSATION_ID. Message: '${message.text.take(30)}...'")
@@ -438,9 +482,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
     // --- Funções de Mapeamento ---
-    // mapEntitiesToUiMessages (Completa)
+    // mapEntitiesToUiMessages
     private fun mapEntitiesToUiMessages(entities: List<ChatMessageEntity>): List<ChatMessage> {
         return entities.mapNotNull { entity ->
             try {
@@ -453,7 +496,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // mapUiMessageToEntity (Completa)
+    // mapUiMessageToEntity
     private fun mapUiMessageToEntity(message: ChatMessage, conversationId: Long, timestamp: Long): ChatMessageEntity {
         return ChatMessageEntity(
             conversationId = conversationId,
@@ -463,48 +506,45 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    // mapMessagesToApiHistory (Completa, com return@map)
-    private fun mapMessagesToApiHistory(messages: List<ChatMessage>): List<Content> { // <<-- CORREÇÃO 3 APLICADA
+    // mapMessagesToApiHistory
+    private fun mapMessagesToApiHistory(messages: List<ChatMessage>): List<Content> {
         return messages
             .takeLast(MAX_HISTORY_MESSAGES)
             .map { msg ->
                 val role = if (msg.sender == Sender.USER) "user" else "model"
-                return@map content(role = role) { text(msg.text) } // <<-- return@map INCLUÍDO
+                return@map content(role = role) { text(msg.text) }
             }
     }
 
-
-    // getDisplayTitle (Modificada para buscar título customizado e usar var)
-    // Esta função ainda é usada para buscar o título inicial para o diálogo de renomear.
+    // getDisplayTitle
     suspend fun getDisplayTitle(conversationId: Long): String {
         return withContext(Dispatchers.IO) {
-            var titleResult: String // Usando var
+            var titleResult: String
             if (conversationId == NEW_CONVERSATION_ID) {
-                titleResult = "Nova Conversa" // Simplificado
+                titleResult = "Nova Conversa"
             } else {
                 try {
                     // 1. Tenta buscar título personalizado PRIMEIRO
-                    val customTitle = metadataDao.getCustomTitle(conversationId) // <<-- USA NOVO DAO
+                    val customTitle = metadataDao.getCustomTitle(conversationId)
                     if (!customTitle.isNullOrBlank()) {
                         Log.d("ChatViewModel", "Using custom title for $conversationId: '$customTitle'")
-                        titleResult = customTitle // Usa o título personalizado
+                        titleResult = customTitle
                     } else {
                         // 2. Se não há título personalizado, tenta a primeira mensagem do usuário
-                        titleResult = generateFallbackTitle(conversationId) // Usa helper
+                        titleResult = generateFallbackTitle(conversationId)
                     }
                 } catch (dbException: Exception) {
                     // Erro geral ao buscar título (customizado ou da mensagem)
                     Log.e("ChatViewModel", "Error fetching title data for conv $conversationId", dbException)
-                    titleResult = "Conversa $conversationId" // Fallback
+                    titleResult = "Conversa $conversationId"
                 }
             }
-            titleResult // Retorna o título determinado
+            titleResult
         }
     }
 
-    // Função helper para gerar título fallback (usada no combine e getDisplayTitle)
+    // Função helper para gerar título fallback
     private suspend fun generateFallbackTitle(conversationId: Long): String = withContext(Dispatchers.IO) {
-        // Não checa NEW_CONVERSATION_ID aqui, pois quem chama já deve ter feito
         try {
             val firstUserMessageText = chatDao.getFirstUserMessageText(conversationId)
             if (!firstUserMessageText.isNullOrBlank()) {
@@ -517,18 +557,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     return@withContext "Conversa ${titleDateFormatter.format(Date(conversationId))}"
                 } catch (formatException: Exception) {
                     Log.w("ChatViewModel", "Could not format conversationId $conversationId as Date for fallback title.", formatException)
-                    return@withContext "Conversa $conversationId" // Fallback final
+                    return@withContext "Conversa $conversationId"
                 }
             }
         } catch (dbException: Exception) {
             Log.e("ChatViewModel", "Error generating fallback title for conv $conversationId", dbException)
-            return@withContext "Conversa $conversationId" // Fallback em caso de erro no DB
+            return@withContext "Conversa $conversationId"
         }
     }
-
 
     // Companion Object
     companion object {
         private val titleDateFormatter = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
     }
-} // Fim da classe ChatViewModel - ~471 Linhas
+}

@@ -39,6 +39,11 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import dev.jeziellago.compose.markdowntext.MarkdownText
 
+// Definindo as cores personalizadas
+private val UserBubbleColor = Color(0xFF303030) // #303030 para o usuário
+private val BotBubbleColor = Color(0xFF000000)  // #171717 para o bot
+private val UserTextColor = Color.White         // Cor do texto nas bolhas do usuário
+private val BotTextColor = Color.White          // Cor do texto nas bolhas do bot
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -257,67 +262,72 @@ fun MessageInput(
 fun MessageBubble(message: ChatMessage) {
     val isUserMessage = message.sender == Sender.USER
     val bubbleAlignment = if (isUserMessage) Alignment.CenterEnd else Alignment.CenterStart
-    val bubbleColor = if (isUserMessage) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
-    val textColor = if (isUserMessage) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer
-    val shape = RoundedCornerShape(
+
+    // Usando as cores personalizadas para o usuário (bot não terá mais bolha)
+    val userBubbleColor = UserBubbleColor
+    val userTextColor = UserTextColor
+    val botTextColor = BotTextColor // Cor do texto do bot sem bolha
+
+    val userShape = RoundedCornerShape(
         topStart = 16.dp,
         topEnd = 16.dp,
-        bottomStart = if (isUserMessage) 16.dp else 0.dp,
-        bottomEnd = if (isUserMessage) 0.dp else 16.dp
+        bottomStart = 16.dp,
+        bottomEnd = 0.dp
     )
 
-    // Criar um estado de transição para controlar a animação para mensagens do bot
-    val visibleState = remember { MutableTransitionState(false) }
+    // Estado de animação (apenas para mensagens do bot)
+    val visibleState = remember { MutableTransitionState(initialState = isUserMessage) }
 
-    // Definir o estado para iniciar a animação
+    // Iniciar animação se for mensagem do bot
     LaunchedEffect(message) {
-        visibleState.targetState = true
+        if (!isUserMessage) {
+            visibleState.targetState = true
+        }
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        contentAlignment = bubbleAlignment
+        contentAlignment = if (isUserMessage) Alignment.CenterEnd else Alignment.CenterStart
     ) {
         if (isUserMessage) {
-            // Mensagem do usuário - texto simples
+            // Mensagem do usuário - mantém a bolha como estava
             SelectionContainer {
                 Text(
                     text = message.text,
-                    color = textColor,
+                    color = userTextColor,
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier
                         .widthIn(max = LocalConfiguration.current.screenWidthDp.dp * 0.75f)
-                        .clip(shape)
-                        .background(bubbleColor)
+                        .clip(userShape)
+                        .background(userBubbleColor)
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 )
             }
         } else {
-            // Mensagem do bot - com rich text e animação
+            // Mensagem do bot - sem bolha, apenas o texto ocupando toda a largura
             AnimatedVisibility(
                 visibleState = visibleState,
-                enter = fadeIn(animationSpec = tween(300)) +
+                enter = fadeIn(animationSpec = tween(durationMillis = 300)) +
                         slideInHorizontally(
                             initialOffsetX = { -40 },
-                            animationSpec = tween(400)
+                            animationSpec = tween(durationMillis = 400)
                         )
             ) {
+                // Container para o conteúdo da mensagem do bot - sem background
                 Box(
                     modifier = Modifier
-                        .widthIn(max = LocalConfiguration.current.screenWidthDp.dp * 0.75f)
-                        .clip(shape)
-                        .background(bubbleColor)
+                        .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
-                    // Renderiza texto markdown para mensagens do bot
+                    // Renderização de markdown sem bolha
                     MarkdownText(
                         markdown = message.text,
-                        modifier = Modifier.widthIn(max = LocalConfiguration.current.screenWidthDp.dp * 0.7f),
-                        color = textColor,
+                        color = botTextColor,
                         fontSize = MaterialTheme.typography.bodyLarge.fontSize,
-                        linkColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth(),
+                        linkColor = Color(0xFF90CAF9), // Azul claro para links
                         onClick = { /* Trate cliques em links, se necessário */ }
                     )
                 }
