@@ -1,7 +1,10 @@
 package com.example.mentesa
 
 import android.util.Log
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,8 +14,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -32,11 +35,6 @@ import com.example.mentesa.ui.theme.MenteSaTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 // Import da nova Data Class para a UI do Drawer
-import com.example.mentesa.ConversationDisplayItem
-import com.example.mentesa.ChatMessage
-import com.example.mentesa.ChatViewModel
-import com.example.mentesa.Sender
-import com.example.mentesa.RenameConversationDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 
@@ -245,7 +243,7 @@ fun MessageInput(
                 modifier = Modifier.size(48.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Send,
+                    imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = stringResource(R.string.action_send),
                     tint = if (message.isNotBlank() && isSendEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
@@ -253,6 +251,9 @@ fun MessageInput(
         }
     }
 }
+
+
+
 
 @Composable
 fun MessageBubble(message: ChatMessage) {
@@ -267,23 +268,58 @@ fun MessageBubble(message: ChatMessage) {
         bottomEnd = if (isUserMessage) 0.dp else 16.dp
     )
 
+    // Criar um estado de transição para controlar a animação apenas para mensagens do bot
+    val visibleState = remember { MutableTransitionState(false) }
+
+    // Definir o estado para iniciar a animação
+    LaunchedEffect(message) {
+        visibleState.targetState = true
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         contentAlignment = bubbleAlignment
     ) {
-        SelectionContainer {
-            Text(
-                text = message.text,
-                color = textColor,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier
-                    .widthIn(max = LocalConfiguration.current.screenWidthDp.dp * 0.75f)
-                    .clip(shape)
-                    .background(bubbleColor)
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
-            )
+        // Se for mensagem do usuário, mostra normalmente
+        if (isUserMessage) {
+            SelectionContainer {
+                Text(
+                    text = message.text,
+                    color = textColor,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .widthIn(max = LocalConfiguration.current.screenWidthDp.dp * 0.75f)
+                        .clip(shape)
+                        .background(bubbleColor)
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                )
+            }
+        }
+        // Se for mensagem do bot, aplica a animação
+        else {
+            AnimatedVisibility(
+                visibleState = visibleState,
+                enter = fadeIn(animationSpec = tween(300)) +
+                        slideInHorizontally(
+                            initialOffsetX = { -40 },  // Desliza da esquerda para a direita
+                            animationSpec = tween(400)
+                        )
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = message.text,
+                        color = textColor,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier
+                            .widthIn(max = LocalConfiguration.current.screenWidthDp.dp * 0.75f)
+                            .clip(shape)
+                            .background(bubbleColor)
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -309,7 +345,7 @@ fun TypingIndicatorAnimation(
                     animation = keyframes {
                         durationMillis = 1000
                         0f at 0 using LinearOutSlowInEasing
-                        -bounceHeightPx at 250 using LinearOutSlowInEasing
+                        bounceHeightPx at 250 using LinearOutSlowInEasing
                         0f at 500 using LinearOutSlowInEasing
                         0f at 1000
                     },
