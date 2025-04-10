@@ -83,6 +83,7 @@ dependencies {
     implementation(libs.generativeai)
     implementation(libs.androidx.core.splashscreen)
     implementation(libs.material)
+    implementation("com.github.jeziellago:compose-markdown:0.3.5")
 
     // --- DEPENDÊNCIAS DO ROOM ADICIONADAS ---
     implementation(libs.androidx.room.runtime)

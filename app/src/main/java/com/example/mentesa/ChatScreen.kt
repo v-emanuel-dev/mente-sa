@@ -37,6 +37,7 @@ import kotlinx.coroutines.launch
 // Import da nova Data Class para a UI do Drawer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import dev.jeziellago.compose.markdowntext.MarkdownText
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -252,9 +253,6 @@ fun MessageInput(
     }
 }
 
-
-
-
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val isUserMessage = message.sender == Sender.USER
@@ -268,7 +266,7 @@ fun MessageBubble(message: ChatMessage) {
         bottomEnd = if (isUserMessage) 0.dp else 16.dp
     )
 
-    // Criar um estado de transição para controlar a animação apenas para mensagens do bot
+    // Criar um estado de transição para controlar a animação para mensagens do bot
     val visibleState = remember { MutableTransitionState(false) }
 
     // Definir o estado para iniciar a animação
@@ -282,8 +280,8 @@ fun MessageBubble(message: ChatMessage) {
             .padding(vertical = 4.dp),
         contentAlignment = bubbleAlignment
     ) {
-        // Se for mensagem do usuário, mostra normalmente
         if (isUserMessage) {
+            // Mensagem do usuário - texto simples
             SelectionContainer {
                 Text(
                     text = message.text,
@@ -296,33 +294,59 @@ fun MessageBubble(message: ChatMessage) {
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 )
             }
-        }
-        // Se for mensagem do bot, aplica a animação
-        else {
+        } else {
+            // Mensagem do bot - com rich text e animação
             AnimatedVisibility(
                 visibleState = visibleState,
                 enter = fadeIn(animationSpec = tween(300)) +
                         slideInHorizontally(
-                            initialOffsetX = { -40 },  // Desliza da esquerda para a direita
+                            initialOffsetX = { -40 },
                             animationSpec = tween(400)
                         )
             ) {
-                SelectionContainer {
-                    Text(
-                        text = message.text,
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = LocalConfiguration.current.screenWidthDp.dp * 0.75f)
+                        .clip(shape)
+                        .background(bubbleColor)
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    // Renderiza texto markdown para mensagens do bot
+                    MarkdownText(
+                        markdown = message.text,
+                        modifier = Modifier.widthIn(max = LocalConfiguration.current.screenWidthDp.dp * 0.7f),
                         color = textColor,
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier
-                            .widthIn(max = LocalConfiguration.current.screenWidthDp.dp * 0.75f)
-                            .clip(shape)
-                            .background(bubbleColor)
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                        fontSize = MaterialTheme.typography.bodyLarge.fontSize,
+                        linkColor = MaterialTheme.colorScheme.primary,
+                        onClick = { /* Trate cliques em links, se necessário */ }
                     )
                 }
             }
         }
     }
 }
+
+// Exemplo de modelo de dados expandido para suportar metadados de formatação
+// Você pode adicionar isso ao seu arquivo de modelo ChatMessage existente
+/*
+data class ChatMessage(
+    val text: String,
+    val sender: Sender,
+    val timestamp: Long = System.currentTimeMillis(),
+    val isMarkdown: Boolean = false // Opcional: você pode usar isso para determinar se o texto deve ser renderizado como markdown
+)
+*/
+
+// Para processamento de mensagens da API, talvez você queira adicionar uma função de utilidade:
+/*
+fun processApiResponse(apiResponse: ApiResponse): ChatMessage {
+    return ChatMessage(
+        text = apiResponse.content,
+        sender = Sender.BOT,
+        isMarkdown = true // Considera todas as mensagens da API como markdown
+    )
+}
+*/
 
 
 @Composable
