@@ -1,4 +1,20 @@
 <resources>
     <string name="app_name">Mente Sã</string>
     <string name="action_send">Enviar</string>
+    <string name="open_drawer_description">Abrir menu de conversas</string>
+    <string name="message_input_placeholder">Digite sua mensagem...</string>
+    <string name="new_conversation_title">Nova Conversa</string>
+    <string name="conversation_list_title">Minhas Conversas</string>
+    <string name="conversation_item_description">Conversa anterior</string> // Exemplo, pode não ser necessário
+    <string name="loading_title_placeholder">Carregando...</string>
+    <string name="error_loading_title">Erro ao carregar título</string>
+    <string name="no_conversations_placeholder">Nenhuma conversa ainda.</string>
+    <string name="conversation_options_desc">Opções da conversa</string>
+    <string name="rename_action">Renomear</string>
+    <string name="delete_action">Excluir</string>
+    <string name="delete_confirmation_title">Confirmar Exclusão</string>
+    <string name="delete_confirmation_text">Tem certeza que deseja excluir esta conversa? Esta ação não pode ser desfeita.</string>
+    <string name="delete_confirm_button">Excluir</string>
+    <string name="cancel_button">Cancelar</string>
 </resources>
+

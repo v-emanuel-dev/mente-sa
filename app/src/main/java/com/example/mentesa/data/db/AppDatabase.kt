@@ -4,10 +4,10 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-
 // Import da Entidade e DAO (ajuste o pacote se necessário)
-import com.example.mentesa.data.db.ChatMessageEntity
-import com.example.mentesa.data.db.ChatDao
+// Removidos imports duplicados, mantenha apenas os necessários
+// import com.example.mentesa.data.db.ChatMessageEntity // Já importado implicitamente pelo @Database
+// import com.example.mentesa.data.db.ChatDao // Já importado pelo retorno de chatDao()
 
 /**
  * Classe principal do banco de dados Room para o aplicativo MenteSã.
@@ -16,7 +16,7 @@ import com.example.mentesa.data.db.ChatDao
  */
 @Database(
     entities = [ChatMessageEntity::class], // Lista as tabelas do banco
-    version = 1,                          // Versão inicial do schema
+    version = 2,                          // <<---- INCREMENTE A VERSÃO AQUI (ex: de 1 para 2)
     exportSchema = false                  // Simplifica, não exporta schema para versionamento
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -48,8 +48,12 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,    // Sua classe AppDatabase
                     "mentesa_database"          // Nome do arquivo do banco de dados
                 )
-                    // Poderia adicionar .fallbackToDestructiveMigration() aqui durante o desenvolvimento
-                    // para evitar a necessidade de criar migrações a cada mudança no schema.
+                    // --- ADICIONE ISTO DURANTE O DESENVOLVIMENTO ---
+                    // Se a versão aumentar e não houver migration,
+                    // o Room destruirá o DB antigo e criará um novo.
+                    // ATENÇÃO: APAGA TODOS OS DADOS EXISTENTES!
+                    .fallbackToDestructiveMigration()
+                    // --- FIM DA ADIÇÃO ---
                     .build()
                 INSTANCE = instance // Armazena a instância criada
                 // Retorna a instância
