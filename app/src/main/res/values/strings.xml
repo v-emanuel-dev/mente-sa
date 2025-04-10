@@ -16,5 +16,8 @@
     <string name="delete_confirmation_text">Tem certeza que deseja excluir esta conversa? Esta ação não pode ser desfeita.</string>
     <string name="delete_confirm_button">Excluir</string>
     <string name="cancel_button">Cancelar</string>
+    <string name="rename_conversation_dialog_title">Renomear Conversa</string>
+    <string name="new_conversation_name_label">Novo nome da conversa</string>
+    <string name="save_button">Salvar</string>
 </resources>
 

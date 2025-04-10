@@ -1,37 +1,31 @@
 package com.example.mentesa
 
 import android.util.Log
-import androidx.compose.foundation.background // Adicionar import
-import androidx.compose.foundation.clickable // Adicionar import
-import androidx.compose.foundation.layout.* // Adicionar imports (Row, Spacer, Box, etc.)
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.* // Necessário para Spacer, etc.
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddComment
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.MoreVert // Ícone "..."
-import androidx.compose.material.icons.filled.Delete // Ícone Lixeira
-import androidx.compose.material.icons.filled.Edit // Ícone Editar
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment // Adicionar import
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color // Adicionar import
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.example.mentesa.data.db.ConversationInfo
-import com.example.mentesa.NEW_CONVERSATION_ID // Importa constante
+import com.example.mentesa.ConversationDisplayItem
+import com.example.mentesa.NEW_CONVERSATION_ID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppDrawerContent(
-    conversations: List<ConversationInfo>,
+    conversationDisplayItems: List<ConversationDisplayItem>,
     currentConversationId: Long?,
-    viewModel: ChatViewModel, // Ainda necessário para getDisplayTitle nesta versão
     onConversationClick: (Long) -> Unit,
     onNewChatClick: () -> Unit,
-    // NOVAS LAMBDAS PARA AÇÕES
     onDeleteConversationRequest: (conversationId: Long) -> Unit,
     onRenameConversationRequest: (conversationId: Long) -> Unit,
     modifier: Modifier = Modifier
@@ -45,19 +39,22 @@ fun AppDrawerContent(
         )
         HorizontalDivider()
 
+        // --- ADICIONADO SPACER AQUI ---
+        Spacer(modifier = Modifier.height(8.dp)) // Adiciona espaço acima do botão
+        // --- FIM DA ADIÇÃO ---
+
         // Item "Nova Conversa"
         NavigationDrawerItem(
             icon = { Icon(Icons.Default.AddComment, contentDescription = null) },
             label = { Text(stringResource(R.string.new_conversation_title)) },
             selected = currentConversationId == null || currentConversationId == NEW_CONVERSATION_ID,
             onClick = onNewChatClick,
-            modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 8.dp) // margem personalizada
+            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding) // Padding padrão do item
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp)) // Mantém espaço abaixo também
 
         // Lista de Conversas Existentes
-        if (conversations.isEmpty()) {
+        if (conversationDisplayItems.isEmpty()) {
             Text(
                 text = stringResource(R.string.no_conversations_placeholder),
                 style = MaterialTheme.typography.bodyMedium,
@@ -65,107 +62,59 @@ fun AppDrawerContent(
             )
         } else {
             LazyColumn {
-                items(conversations, key = { it.id }) { conversationInfo ->
-                    // Usa o novo Composable de linha customizado
+                items(conversationDisplayItems, key = { it.id }) { displayItem ->
                     ConversationDrawerRow(
-                        conversationInfo = conversationInfo,
-                        isSelected = conversationInfo.id == currentConversationId,
-                        viewModel = viewModel,
-                        onItemClick = { onConversationClick(conversationInfo.id) },
-                        onRenameClick = { onRenameConversationRequest(conversationInfo.id) },
-                        onDeleteClick = { onDeleteConversationRequest(conversationInfo.id) }
+                        displayItem = displayItem,
+                        isSelected = displayItem.id == currentConversationId,
+                        onItemClick = { onConversationClick(displayItem.id) },
+                        onRenameClick = { onRenameConversationRequest(displayItem.id) },
+                        onDeleteClick = { onDeleteConversationRequest(displayItem.id) }
                     )
-                    HorizontalDivider() // Divisor entre itens
+                    HorizontalDivider()
                 }
             }
         }
     }
 }
 
-// NOVO: Composable para a linha da conversa com opções
 @Composable
 private fun ConversationDrawerRow(
-    conversationInfo: ConversationInfo,
+    displayItem: ConversationDisplayItem,
     isSelected: Boolean,
-    viewModel: ChatViewModel,
     onItemClick: () -> Unit,
     onRenameClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
-
-    val loadingPlaceholder = stringResource(R.string.loading_title_placeholder)
-    val errorLoadingText = stringResource(R.string.error_loading_title)
-    val displayTitleState = produceState(loadingPlaceholder, conversationInfo.id) {
-        value = try {
-            viewModel.getDisplayTitle(conversationInfo.id)
-        } catch (e: Exception) {
-            Log.e("AppDrawerContent", "Error fetching title for conv ${conversationInfo.id}", e)
-            errorLoadingText
-        }
-    }
-
     val backgroundColor = if (isSelected) {
         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-    } else {
-        Color.Transparent
-    }
+    } else { Color.Transparent }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onItemClick) // Linha clicável
+            .clickable(onClick = onItemClick)
             .background(backgroundColor)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = Icons.Default.Chat,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp)
-        )
+        Icon( Icons.Default.Chat, null, Modifier.size(24.dp) )
         Spacer(modifier = Modifier.width(16.dp))
         Text(
-            text = displayTitleState.value,
+            text = displayItem.displayTitle,
             style = MaterialTheme.typography.bodyLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f) // Empurra o botão para a direita
+            modifier = Modifier.weight(1f)
         )
         Spacer(modifier = Modifier.width(8.dp))
-
-        // Box para ancorar o DropdownMenu
         Box {
             IconButton(onClick = { showMenu = true }) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = stringResource(R.string.conversation_options_desc) // String para acessibilidade
-                )
+                Icon( Icons.Default.MoreVert, stringResource(R.string.conversation_options_desc) )
             }
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.rename_action)) },
-                    onClick = {
-                        onRenameClick()
-                        showMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Edit, contentDescription = null)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.delete_action)) },
-                    onClick = {
-                        onDeleteClick()
-                        showMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                    }
-                )
+            DropdownMenu( expanded = showMenu, onDismissRequest = { showMenu = false } ) {
+                DropdownMenuItem( text = { Text(stringResource(R.string.rename_action)) }, onClick = { onRenameClick(); showMenu = false }, leadingIcon = { Icon(Icons.Default.Edit, null) } )
+                DropdownMenuItem( text = { Text(stringResource(R.string.delete_action)) }, onClick = { onDeleteClick(); showMenu = false }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) } )
             }
         }
     }
