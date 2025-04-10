@@ -7,20 +7,11 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
-// Import da Entidade
-import com.example.mentesa.data.db.ChatMessageEntity
-
-/**
- * Data class para informações da conversa.
- */
 data class ConversationInfo(
     @ColumnInfo(name = "conversation_id") val id: Long,
     @ColumnInfo(name = "last_timestamp") val lastTimestamp: Long
 )
 
-/**
- * DAO atualizado para suportar múltiplas conversas e busca de título.
- */
 @Dao
 interface ChatDao {
 
@@ -38,17 +29,13 @@ interface ChatDao {
     """)
     fun getConversations(): Flow<List<ConversationInfo>>
 
-    /**
-     * Busca o texto da primeira mensagem enviada pelo USUÁRIO em uma conversa específica.
-     * Retorna null se não houver mensagens do usuário na conversa.
-     */
     @Query("""
         SELECT message_text FROM chat_messages
         WHERE conversation_id = :conversationId AND sender_type = 'USER'
         ORDER BY timestamp ASC
         LIMIT 1
     """)
-    suspend fun getFirstUserMessageText(conversationId: Long): String? // <-- NOVO MÉTODO
+    suspend fun getFirstUserMessageText(conversationId: Long): String?
 
     @Query("DELETE FROM chat_messages WHERE conversation_id = :conversationId")
     suspend fun clearConversation(conversationId: Long)

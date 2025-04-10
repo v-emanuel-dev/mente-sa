@@ -1,7 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
 
-// --- Código para carregar local.properties (Necessário para API Key) ---
 val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
@@ -9,14 +8,12 @@ if (localPropertiesFile.exists()) {
 } else {
     println("Warning: local.properties not found. API Key will be missing from BuildConfig.")
 }
-// --- FIM ---
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.android.libraries.mapsplatform.secrets.gradle.plugin)
-    // --- ADICIONADO PLUGIN KSP ---
     alias(libs.plugins.ksp)
 }
 
@@ -32,13 +29,11 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // --- LÓGICA MANUAL BuildConfigField (Necessária para API Key) ---
-        val apiKeyFromProperties = localProperties.getProperty("apiKey") ?: "" // Use "apiKey" se for o nome em local.properties
+        val apiKeyFromProperties = localProperties.getProperty("apiKey") ?: ""
         if (apiKeyFromProperties.isBlank()) {
             println("Warning: 'apiKey' not found in local.properties. BuildConfig field will be empty.")
         }
         buildConfigField("String", "GEMINI_API_KEY", "\"${apiKeyFromProperties}\"")
-        // --- FIM ---
     }
 
     buildTypes {
@@ -51,17 +46,21 @@ android {
         }
         debug {}
     }
+
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11 // Mantenha 11 ou mude para 17 se preferir/necessário
-        targetCompatibility = JavaVersion.VERSION_11 // Mantenha 11 ou mude para 17
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
+
     kotlinOptions {
-        jvmTarget = "11" // Mantenha 11 ou mude para 17
+        jvmTarget = "11"
     }
+
     buildFeatures {
         compose = true
         buildConfig = true
     }
+
     packagingOptions {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -73,6 +72,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -85,23 +85,18 @@ dependencies {
     implementation(libs.material)
     implementation("com.github.jeziellago:compose-markdown:0.3.5")
 
-    // --- DEPENDÊNCIAS DO ROOM ADICIONADAS ---
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler) // Usa KSP para o compilador
-    // --- FIM ---
+    ksp(libs.androidx.room.compiler)
 
-    // Testes
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
-    // --- DEPENDÊNCIAS DE TESTE ROOM/COROUTINES ---
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.kotlinx.coroutines.test)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    implementation(libs.androidx.lifecycle.viewmodel.ktx) // Dependência KTX explícita
 }

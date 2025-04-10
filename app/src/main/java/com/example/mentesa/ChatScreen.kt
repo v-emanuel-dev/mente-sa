@@ -34,41 +34,33 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mentesa.ui.theme.MenteSaTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-// Import da nova Data Class para a UI do Drawer
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
 import dev.jeziellago.compose.markdowntext.MarkdownText
 
-// Definindo as cores personalizadas
-private val UserBubbleColor = Color(0xFF303030) // #303030 para o usuário
-private val BotBubbleColor = Color(0xFF000000)  // #171717 para o bot
-private val UserTextColor = Color.White         // Cor do texto nas bolhas do usuário
-private val BotTextColor = Color.White          // Cor do texto nas bolhas do bot
+private val UserBubbleColor = Color(0xFF303030)
+private val BotBubbleColor = Color(0xFF000000)
+private val UserTextColor = Color.White
+private val BotTextColor = Color.White
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     chatViewModel: ChatViewModel = viewModel()
 ) {
-    // Coleta estados do ViewModel
     val messages by chatViewModel.messages.collectAsState()
     val conversationDisplayList by chatViewModel.conversationListForDrawer.collectAsState()
     val currentConversationId by chatViewModel.currentConversationId.collectAsState()
     val isLoading by chatViewModel.isLoading.collectAsState()
     val errorMessage by chatViewModel.errorMessage.collectAsState()
 
-    // Estados da UI
     var userMessage by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
-    // Estados para diálogos
     var conversationIdToRename by remember { mutableStateOf<Long?>(null) }
     var currentTitleForDialog by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirmationDialog by remember { mutableStateOf<Long?>(null) }
 
-    // Efeito para buscar título para o diálogo de renomear
     LaunchedEffect(conversationIdToRename) {
         val id = conversationIdToRename
         currentTitleForDialog = if (id != null && id != NEW_CONVERSATION_ID) "" else null
@@ -101,24 +93,22 @@ fun ChatScreen(
                     }
                 },
                 onDeleteConversationRequest = { conversationId ->
-                    // Não fecha mais o drawer aqui
                     showDeleteConfirmationDialog = conversationId
                 },
                 onRenameConversationRequest = { conversationId ->
-                    // Não fecha mais o drawer aqui
                     Log.d("ChatScreen", "Rename requested for $conversationId. Setting state.")
                     conversationIdToRename = conversationId
                 }
             )
         }
-    ) { // Conteúdo principal (Scaffold)
+    ) {
         Scaffold(
             topBar = {
                 CenterAlignedTopAppBar(
                     title = { Text(stringResource(id = R.string.app_name)) },
                     navigationIcon = {
                         IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
-                            Icon( Icons.Filled.Menu, stringResource(R.string.open_drawer_description), tint = Color.White )
+                            Icon(Icons.Filled.Menu, stringResource(R.string.open_drawer_description), tint = Color.White)
                         }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -127,7 +117,6 @@ fun ChatScreen(
                 )
             },
             bottomBar = {
-                // Chama MessageInput (que agora tem padding interno)
                 MessageInput(
                     message = userMessage,
                     onMessageChange = { userMessage = it },
@@ -141,11 +130,11 @@ fun ChatScreen(
                 )
             }
         ) { paddingValues ->
-            Column( modifier = Modifier.fillMaxSize().padding(paddingValues) ) {
+            Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp) // Padding interno da lista
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
                 ) {
                     items(messages, key = { "${it.sender}-${it.text.hashCode()}" }) { message ->
                         MessageBubble(message = message)
@@ -159,20 +148,36 @@ fun ChatScreen(
                         text = "Erro: $errorMsg",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp).background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f)).padding(vertical = 4.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f))
+                            .padding(vertical = 4.dp)
                     )
                 }
             }
-        } // Fim Scaffold
+        }
 
-        // --- Diálogos ---
         showDeleteConfirmationDialog?.let { conversationIdToDelete ->
             AlertDialog(
                 onDismissRequest = { showDeleteConfirmationDialog = null },
                 title = { Text(stringResource(R.string.delete_confirmation_title)) },
                 text = { Text(stringResource(R.string.delete_confirmation_text)) },
-                confirmButton = { TextButton( onClick = { chatViewModel.deleteConversation(conversationIdToDelete); showDeleteConfirmationDialog = null } ) { Text(stringResource(R.string.delete_confirm_button), color = MaterialTheme.colorScheme.error) } },
-                dismissButton = { TextButton(onClick = { showDeleteConfirmationDialog = null }) { Text(stringResource(R.string.cancel_button)) } }
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            chatViewModel.deleteConversation(conversationIdToDelete)
+                            showDeleteConfirmationDialog = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.delete_confirm_button), color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmationDialog = null }) {
+                        Text(stringResource(R.string.cancel_button))
+                    }
+                }
             )
         }
 
@@ -191,18 +196,14 @@ fun ChatScreen(
                 )
             }
         }
+    }
 
-    } // Fim ModalNavigationDrawer
-
-    // Efeito para rolar a lista de mensagens
-    LaunchedEffect(messages.size, isLoading) { /* ... */ }
-
-} // Fim ChatScreen
-
-
-// ========================================================
-// Demais Composables DEFINIDOS DENTRO DE ChatScreen.kt
-// ========================================================
+    LaunchedEffect(messages.size, isLoading) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+}
 
 @Composable
 fun MessageInput(
@@ -211,16 +212,13 @@ fun MessageInput(
     onSendClick: () -> Unit,
     isSendEnabled: Boolean
 ) {
-    // --- ALTERAÇÃO APLICADA AQUI: Adicionado padding inferior ao Surface ---
     Surface(
         shadowElevation = 8.dp,
-        modifier = Modifier.padding(bottom = 8.dp) // <<-- Adiciona espaço ABAIXO do input
+        modifier = Modifier.padding(bottom = 16.dp)
     ) {
-        // --- FIM DA ALTERAÇÃO ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // Padding interno do Row
                 .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -251,7 +249,10 @@ fun MessageInput(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = stringResource(R.string.action_send),
-                    tint = if (message.isNotBlank() && isSendEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    tint = if (message.isNotBlank() && isSendEnabled)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
             }
         }
@@ -261,12 +262,9 @@ fun MessageInput(
 @Composable
 fun MessageBubble(message: ChatMessage) {
     val isUserMessage = message.sender == Sender.USER
-    val bubbleAlignment = if (isUserMessage) Alignment.CenterEnd else Alignment.CenterStart
-
-    // Usando as cores personalizadas para o usuário (bot não terá mais bolha)
     val userBubbleColor = UserBubbleColor
     val userTextColor = UserTextColor
-    val botTextColor = BotTextColor // Cor do texto do bot sem bolha
+    val botTextColor = BotTextColor
 
     val userShape = RoundedCornerShape(
         topStart = 16.dp,
@@ -275,10 +273,8 @@ fun MessageBubble(message: ChatMessage) {
         bottomEnd = 0.dp
     )
 
-    // Estado de animação (apenas para mensagens do bot)
     val visibleState = remember { MutableTransitionState(initialState = isUserMessage) }
 
-    // Iniciar animação se for mensagem do bot
     LaunchedEffect(message) {
         if (!isUserMessage) {
             visibleState.targetState = true
@@ -292,7 +288,6 @@ fun MessageBubble(message: ChatMessage) {
         contentAlignment = if (isUserMessage) Alignment.CenterEnd else Alignment.CenterStart
     ) {
         if (isUserMessage) {
-            // Mensagem do usuário - mantém a bolha como estava
             SelectionContainer {
                 Text(
                     text = message.text,
@@ -306,7 +301,6 @@ fun MessageBubble(message: ChatMessage) {
                 )
             }
         } else {
-            // Mensagem do bot - sem bolha, apenas o texto ocupando toda a largura
             AnimatedVisibility(
                 visibleState = visibleState,
                 enter = fadeIn(animationSpec = tween(durationMillis = 300)) +
@@ -315,49 +309,24 @@ fun MessageBubble(message: ChatMessage) {
                             animationSpec = tween(durationMillis = 400)
                         )
             ) {
-                // Container para o conteúdo da mensagem do bot - sem background
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
-                    // Renderização de markdown sem bolha
                     MarkdownText(
                         markdown = message.text,
                         color = botTextColor,
                         fontSize = MaterialTheme.typography.bodyLarge.fontSize,
                         modifier = Modifier.fillMaxWidth(),
-                        linkColor = Color(0xFF90CAF9), // Azul claro para links
-                        onClick = { /* Trate cliques em links, se necessário */ }
+                        linkColor = Color(0xFF90CAF9),
+                        onClick = { }
                     )
                 }
             }
         }
     }
 }
-
-// Exemplo de modelo de dados expandido para suportar metadados de formatação
-// Você pode adicionar isso ao seu arquivo de modelo ChatMessage existente
-/*
-data class ChatMessage(
-    val text: String,
-    val sender: Sender,
-    val timestamp: Long = System.currentTimeMillis(),
-    val isMarkdown: Boolean = false // Opcional: você pode usar isso para determinar se o texto deve ser renderizado como markdown
-)
-*/
-
-// Para processamento de mensagens da API, talvez você queira adicionar uma função de utilidade:
-/*
-fun processApiResponse(apiResponse: ApiResponse): ChatMessage {
-    return ChatMessage(
-        text = apiResponse.content,
-        sender = Sender.BOT,
-        isMarkdown = true // Considera todas as mensagens da API como markdown
-    )
-}
-*/
-
 
 @Composable
 fun TypingIndicatorAnimation(
@@ -407,7 +376,6 @@ fun TypingIndicatorAnimation(
     }
 }
 
-
 @Composable
 fun TypingBubbleAnimation(modifier: Modifier = Modifier) {
     val bubbleColor = MaterialTheme.colorScheme.secondaryContainer
@@ -433,13 +401,22 @@ fun TypingBubbleAnimation(modifier: Modifier = Modifier) {
     }
 }
 
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Preview(showSystemUi = true, name = "Chat Screen Preview")
 @Composable
 fun ChatScreenPreview() {
-    val previewMessages = remember { mutableStateListOf( ChatMessage("Olá! Preview.", Sender.BOT), ChatMessage("Tudo bem?", Sender.USER) ) }
-    val previewConversations = remember { listOf( ConversationDisplayItem(1L, "Conversa 1", 0L), ConversationDisplayItem(2L, "Conversa 2 Longa...", 0L) ) }
+    val previewMessages = remember {
+        mutableStateListOf(
+            ChatMessage("Olá! Preview.", Sender.BOT),
+            ChatMessage("Tudo bem?", Sender.USER)
+        )
+    }
+    val previewConversations = remember {
+        listOf(
+            ConversationDisplayItem(1L, "Conversa 1", 0L),
+            ConversationDisplayItem(2L, "Conversa 2 Longa...", 0L)
+        )
+    }
     val previewIsLoading = remember { mutableStateOf(false) }
 
     MenteSaTheme {
@@ -459,10 +436,30 @@ fun ChatScreenPreview() {
             }
         ) {
             Scaffold(
-                topBar = { CenterAlignedTopAppBar( title = { Text("Mente Sã Preview") }, navigationIcon = { IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Filled.Menu, "") } } ) },
-                bottomBar = { MessageInput( message = "", onMessageChange = {}, onSendClick = {}, isSendEnabled = true ) }
+                topBar = {
+                    CenterAlignedTopAppBar(
+                        title = { Text("Mente Sã Preview") },
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Filled.Menu, contentDescription = "Open menu")
+                            }
+                        }
+                    )
+                },
+                bottomBar = {
+                    MessageInput(
+                        message = "",
+                        onMessageChange = {},
+                        onSendClick = {},
+                        isSendEnabled = true
+                    )
+                }
             ) { padding ->
-                LazyColumn( modifier = Modifier.padding(padding).fillMaxSize() ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .padding(padding)
+                        .fillMaxSize()
+                ) {
                     items(previewMessages) { msg -> MessageBubble(message = msg) }
                     if (previewIsLoading.value) { item { TypingBubbleAnimation() } }
                 }

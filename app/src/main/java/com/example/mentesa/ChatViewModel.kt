@@ -9,14 +9,12 @@ import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.GenerateContentResponse
 import com.google.ai.client.generativeai.type.RequestOptions
 import com.google.ai.client.generativeai.type.content
-// --- IMPORTS DO ROOM ---
 import com.example.mentesa.data.db.AppDatabase
 import com.example.mentesa.data.db.ChatDao
 import com.example.mentesa.data.db.ChatMessageEntity
 import com.example.mentesa.data.db.ConversationInfo
 import com.example.mentesa.data.db.ConversationMetadataDao
 import com.example.mentesa.data.db.ConversationMetadataEntity
-// --- FIM IMPORTS ROOM ---
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -27,34 +25,24 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// --- NOVA DATA CLASS (pode ficar aqui ou em arquivo separado) ---
-/**
- * Representa um item de conversa pronto para exibição no Drawer,
- * já contendo o título correto (customizado ou padrão).
- */
 data class ConversationDisplayItem(
     val id: Long,
     val displayTitle: String,
     val lastTimestamp: Long
 )
-// --- FIM NOVA DATA CLASS ---
 
-// Enum para estado de carregamento
 enum class LoadingState { IDLE, LOADING, ERROR }
 
-// --- CONSTANTES ---
 const val NEW_CONVERSATION_ID = -1L
 private const val MAX_HISTORY_MESSAGES = 20
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
-    // Instâncias dos DAOs
     private val appDb = AppDatabase.getDatabase(application)
     private val chatDao: ChatDao = appDb.chatDao()
     private val metadataDao: ConversationMetadataDao = appDb.conversationMetadataDao()
 
-    // --- StateFlows Expostos para a UI ---
     private val _currentConversationId = MutableStateFlow<Long?>(null)
     val currentConversationId: StateFlow<Long?> = _currentConversationId.asStateFlow()
 
@@ -69,32 +57,26 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    // --- Fluxos Internos ---
-    // Flow original de ConversationInfo (baseado em chat_messages)
     private val rawConversationsFlow: Flow<List<ConversationInfo>> = chatDao.getConversations()
         .catch { e ->
-            Log.e("ChatViewModel", "Error loading raw conversations flow", e);
+            Log.e("ChatViewModel", "Error loading raw conversations flow", e)
             _errorMessage.value = "Erro ao carregar lista de conversas (raw)."
             emit(emptyList())
         }
 
-    // Flow que observa os metadados (baseado em conversation_metadata)
     private val metadataFlow: Flow<List<ConversationMetadataEntity>> = metadataDao.getAllMetadata()
         .catch { e ->
-            Log.e("ChatViewModel", "Error loading metadata flow", e);
+            Log.e("ChatViewModel", "Error loading metadata flow", e)
             emit(emptyList())
         }
 
-    // --- STATEFLOW COMBINADO PARA A UI DO DRAWER ---
     val conversationListForDrawer: StateFlow<List<ConversationDisplayItem>> =
         combine(rawConversationsFlow, metadataFlow) { conversations, metadataList ->
             Log.d("ChatViewModel", "Combining ${conversations.size} convs and ${metadataList.size} metadata entries.")
             val metadataMap = metadataList.associateBy({ it.conversationId }, { it.customTitle })
 
-            // Mapeia cada ConversationInfo para ConversationDisplayItem
             conversations.map { convInfo ->
                 val customTitle = metadataMap[convInfo.id]?.takeIf { it.isNotBlank() }
-                // Chama função suspend helper para obter título fallback (acessa DB)
                 val finalTitle = customTitle ?: generateFallbackTitle(convInfo.id)
 
                 ConversationDisplayItem(
@@ -118,8 +100,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 initialValue = emptyList()
             )
 
-
-    // Definição do messages (com saudação inicial e estrutura do 'when' corrigida)
     val messages: StateFlow<List<ChatMessage>> = _currentConversationId.flatMapLatest { convId ->
         Log.d("ChatViewModel", "[State] CurrentConversationId changed: $convId")
         when (convId) {
@@ -146,65 +126,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = emptyList()
     )
 
-    // Mensagem de boas vindas
     private val welcomeMessageText = "Olá! 😊 Eu sou o Mente Sã, seu assistente virtual de saúde mental, e é um prazer te conhecer. Como você está se sentindo hoje? Estou aqui para te acompanhar com empatia e respeito, oferecendo um espaço seguro e acolhedor para você se expressar. Existe algo em particular que gostaria de conversar ou explorar?"
 
-    // ATUALIZADO: Prompt Base com restrições de tópico
     private val menteSaSystemPrompt = """
-        Você é o Mente Sã, um assistente virtual especializado exclusivamente em saúde mental. 
+    Você é o Mente Sã, um assistente virtual especializado exclusivamente em saúde mental, desenvolvido para oferecer suporte empático e baseado em evidências científicas.
 
-        LIMITAÇÕES IMPORTANTES:
-        1. Você DEVE se recusar a responder qualquer pergunta não relacionada à saúde mental.
-        2. NÃO responda perguntas sobre física, química, matemática, história, geografia, esportes, entretenimento ou qualquer outro assunto não diretamente relacionado à saúde mental.
-        3. Quando o usuário fizer uma pergunta fora do escopo, responda educadamente: "Desculpe, sou especializado apenas em temas de saúde mental. Posso ajudar você com ansiedade, depressão, técnicas de autocuidado ou outros assuntos relacionados ao bem-estar emocional."
-        4. Nunca forneça respostas parciais a tópicos fora do escopo, mesmo que pareçam ter alguma conexão.
+    ## LIMITAÇÕES IMPORTANTES:
+    1. Você DEVE se recusar a responder qualquer pergunta não relacionada à saúde mental.
+    2. NÃO responda perguntas sobre física, química, matemática, história, geografia, política, esportes, entretenimento, tecnologia ou qualquer outro assunto não diretamente relacionado à saúde mental.
+    3. Quando o usuário fizer uma pergunta fora do escopo, responda: "Desculpe, sou especializado apenas em temas de saúde mental. Posso ajudar você com questões relacionadas à ansiedade, depressão, técnicas de autocuidado ou outros assuntos ligados ao bem-estar emocional."
+    4. Nunca forneça respostas parciais a tópicos fora do escopo, mesmo que pareçam ter alguma conexão com saúde mental.
+    5. NUNCA forneça diagnósticos médicos. Sempre esclareça que suas informações não substituem avaliação profissional.
+    
+    ## TÓPICOS PERMITIDOS:
+    - Transtornos mentais: ansiedade, depressão, transtorno bipolar, TOC, TEPT, e outros
+    - Técnicas de meditação, mindfulness e gerenciamento de estresse
+    - Métodos de autocuidado e promoção de bem-estar emocional
+    - Comunicação saudável e desenvolvimento de relacionamentos interpessoais
+    - Sono e sua relação com a saúde mental
+    - Exercícios físicos e alimentação no contexto da saúde mental
+    - Estratégias para regular emoções e desenvolver resiliência
+    - Recursos e opções de tratamento para condições de saúde mental
+    - Práticas de autocompaixão e desenvolvimento de autoestima saudável
+    
+    ## ESTILO DE RESPOSTA:
+    - Seja empático e acolhedor, demonstrando compreensão das dificuldades do usuário
+    - Use linguagem acessível e evite jargões técnicos desnecessários
+    - Forneça informações precisas e baseadas em evidências científicas atualizadas
+    - Ofereça sugestões práticas e aplicáveis ao contexto do usuário
+    - Normalize as experiências de saúde mental para reduzir o estigma
+    - Incentive a busca por ajuda profissional quando apropriado
+    - Adapte o tom para ser reconfortante em momentos de crise e encorajador quando apropriado
+    - Mantenha um equilíbrio entre validar sentimentos e oferecer perspectivas construtivas
+    
+    ## SITUAÇÕES DE RISCO:
+    - Em casos de ideação suicida ou autolesão, responda com empatia e urgência
+    - Direcione imediatamente para recursos de crise (como CVV - 188 no Brasil)
+    - Nunca minimize esses sentimentos ou sugira que são "apenas uma fase"
+    - Enfatize que ajuda está disponível e que sentimentos intensos são temporários
 
-        TÓPICOS PERMITIDOS:
-        - Ansiedade, depressão, estresse e outras condições de saúde mental
-        - Técnicas de meditação e mindfulness
-        - Métodos de autocuidado e bem-estar emocional
-        - Comunicação saudável e relacionamentos interpessoais
-        - Sono e sua relação com a saúde mental
-        - Exercícios e alimentação no contexto da saúde mental
-        - Prograamação
+    Seu objetivo principal é criar um espaço seguro para discussões sobre saúde mental, oferecendo suporte informativo e emocional que promova o bem-estar do usuário.
+""".trimIndent()
 
-        Mantenha suas respostas empáticas, acolhedoras e focadas em apoiar o bem-estar mental do usuário.
-    """.trimIndent()
-
-    // NOVA FUNÇÃO: Detectar tópicos proibidos
-    private fun isProhibitedTopic(message: String): Boolean {
-        val prohibitedKeywords = listOf(
-            "física", "química", "matemática", "história", "geografia",
-            "esportes", "futebol", "basquete", "filme", "novela", "série",
-            "equação", "fórmula", "newton", "einstein", "átomo", "planeta",
-            "astronomia", "galáxia", "guerra", "política", "economia",
-            "programação", "computador", "código", "app", "desenvolvimento",
-            "presidente", "eleição", "partido", "língua", "gramática"
-        )
-
-        return prohibitedKeywords.any {
-            message.lowercase().contains(it.lowercase())
-        }
-    }
-
-    // NOVA FUNÇÃO: Verificar respostas do bot
-    private fun isValidResponse(response: String): Boolean {
-        val prohibitedPatterns = listOf(
-            "na física", "em física", "a física", "física é",
-            "fórmula", "equação", "cálculo de", "matemática",
-            "história", "guerra mundial", "presidente", "governador",
-            "astronomia", "planeta", "computação", "programação",
-            "código fonte", "esporte", "time", "filme", "série"
-        )
-
-        return !prohibitedPatterns.any {
-            response.lowercase().contains(it.lowercase())
-        }
-    }
-
-    // Modelo Gemini
     private val generativeModel = GenerativeModel(
-        modelName = "gemini-1.5-flash-latest",
+        modelName = "gemini-2.0-flash",
         apiKey = BuildConfig.GEMINI_API_KEY,
         systemInstruction = content { text(menteSaSystemPrompt) },
         requestOptions = RequestOptions(timeout = 60000)
@@ -214,7 +179,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         loadInitialConversationOrStartNew()
     }
 
-    // Lógica de inicialização (agora usa o flow combinado)
     private fun loadInitialConversationOrStartNew() {
         viewModelScope.launch {
             delay(150)
@@ -230,9 +194,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Funções Chamadas pela UI ---
-
-    // startNewConversation
     fun startNewConversation() {
         if (_currentConversationId.value != NEW_CONVERSATION_ID) {
             Log.i("ChatViewModel", "Action: Starting new conversation flow")
@@ -244,7 +205,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // selectConversation
     fun selectConversation(conversationId: Long) {
         if (conversationId != _currentConversationId.value && conversationId != NEW_CONVERSATION_ID) {
             Log.i("ChatViewModel", "Action: Selecting conversation $conversationId")
@@ -258,7 +218,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ATUALIZADO: sendMessage com validação de tópico
     fun sendMessage(userMessageText: String) {
         if (userMessageText.isBlank()) {
             Log.w("ChatViewModel", "sendMessage cancelled: Empty message.")
@@ -277,13 +236,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         var targetConversationId = _currentConversationId.value
         val isStartingNewConversation = (targetConversationId == null || targetConversationId == NEW_CONVERSATION_ID)
 
-        // Cria nova conversa se necessário ANTES de salvar/chamar API
         if (isStartingNewConversation) {
             targetConversationId = timestamp
             Log.i("ChatViewModel", "Action: Creating new conversation with potential ID: $targetConversationId")
-            // Define o ID atual ANTES de salvar a primeira msg, para que a UI reaja
             _currentConversationId.value = targetConversationId
-            // Salva metadados iniciais (sem título customizado) para garantir que a linha exista
             viewModelScope.launch(Dispatchers.IO) {
                 try {
                     metadataDao.insertOrUpdateMetadata(ConversationMetadataEntity(targetConversationId, null))
@@ -293,7 +249,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Validação final do ID
         if (targetConversationId == null || targetConversationId == NEW_CONVERSATION_ID) {
             Log.e("ChatViewModel", "sendMessage Error: Invalid targetConversationId ($targetConversationId) after checking for new conversation.")
             _errorMessage.value = "Erro interno: Não foi possível determinar a conversa."
@@ -304,11 +259,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val userUiMessage = ChatMessage(userMessageText, Sender.USER)
         saveMessageToDb(userUiMessage, targetConversationId, timestamp)
 
-        // NOVO: Verificar tópicos proibidos
-        if (isProhibitedTopic(userMessageText)) {
+        if (this.isProhibitedTopic(userMessageText)) {
             Log.w("ChatViewModel", "Prohibited topic detected: '${userMessageText.take(50)}...'")
 
-            // Responde automaticamente sem chamar a API
             val botResponse = "Desculpe, sou especializado apenas em temas de saúde mental. Posso ajudar você com ansiedade, depressão, técnicas de autocuidado ou outros assuntos relacionados ao bem-estar emocional."
             saveMessageToDb(ChatMessage(botResponse, Sender.BOT), targetConversationId)
             _loadingState.value = LoadingState.IDLE
@@ -332,7 +285,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // deleteConversation (Modificada para deletar metadados)
     fun deleteConversation(conversationId: Long) {
         if (conversationId == NEW_CONVERSATION_ID) {
             Log.w("ChatViewModel", "Attempted to delete invalid NEW_CONVERSATION_ID conversation.")
@@ -341,16 +293,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         Log.i("ChatViewModel", "Action: Deleting conversation $conversationId and its metadata")
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // 1. Deleta as mensagens
                 chatDao.clearConversation(conversationId)
-                // 2. Deleta os metadados (título personalizado)
                 metadataDao.deleteMetadata(conversationId)
 
                 Log.i("ChatViewModel", "Conversation $conversationId and metadata deleted successfully from DB.")
 
-                // Lógica para atualizar a conversa selecionada (se necessário)
                 if (_currentConversationId.value == conversationId) {
-                    // Busca as conversas restantes DIRETAMENTE do DAO após a exclusão
                     val remainingConversations = chatDao.getConversations().first()
 
                     withContext(Dispatchers.Main) {
@@ -364,7 +312,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
-                // A UI que observa 'conversationListForDrawer' deve atualizar automaticamente.
             } catch (e: Exception) {
                 Log.e("ChatViewModel", "Error deleting conversation $conversationId or its metadata", e)
                 withContext(Dispatchers.Main) {
@@ -374,7 +321,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // renameConversation
     fun renameConversation(conversationId: Long, newTitle: String) {
         if (conversationId == NEW_CONVERSATION_ID) {
             Log.w("ChatViewModel", "Cannot rename NEW_CONVERSATION_ID.")
@@ -403,7 +349,117 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ATUALIZADO: callGeminiApi com validação de respostas
+    private fun isProhibitedTopic(message: String): Boolean {
+        // Categorias de tópicos proibidos para facilitar manutenção
+        val prohibitedTopics = mapOf(
+            "Ciências Exatas" to listOf(
+                "física", "química", "matemática", "equação", "fórmula", "cálculo",
+                "átomo", "molécula", "reação", "elemento", "tabela periódica",
+                "teorema", "álgebra", "geometria", "trigonometria", "derivada", "integral",
+                "newton", "einstein", "celsius", "kelvin", "tesla", "feynman"
+            ),
+            "Astronomia" to listOf(
+                "astronomia", "planeta", "galáxia", "sistema solar", "estrela", "universo",
+                "nasa", "spacex", "satélite", "marte", "júpiter", "lua", "eclipse", "cometa"
+            ),
+            "História/Geografia" to listOf(
+                "história", "geografia", "guerra", "império", "revolução", "dinastia",
+                "continente", "país", "capital", "mapa", "relevo", "clima", "população",
+                "guerra mundial", "idade média", "renascimento", "colonização", "civilização"
+            ),
+            "Política/Economia" to listOf(
+                "política", "economia", "presidente", "eleição", "partido", "congresso",
+                "senador", "deputado", "ministro", "inflação", "juros", "bolsa", "mercado",
+                "imposto", "orçamento", "déficit", "superávit", "banco central", "governo"
+            ),
+            "Entretenimento" to listOf(
+                "esporte", "futebol", "basquete", "vôlei", "filme", "novela", "série",
+                "time", "campeonato", "copa", "olimpíada", "ator", "atriz", "diretor",
+                "netflix", "cinema", "teatro", "show", "música", "concerto", "festival"
+            ),
+            "Tecnologia" to listOf(
+                "computador", "programação", "código", "app", "desenvolvimento", "software",
+                "hardware", "internet", "rede", "algoritmo", "linguagem", "java", "python",
+                "website", "servidor", "banco de dados", "cloud", "api", "framework"
+            ),
+            "Linguística" to listOf(
+                "língua", "gramática", "sintaxe", "semântica", "verbo", "substantivo",
+                "pronome", "preposição", "ortografia", "fonética", "tradução", "idioma"
+            )
+        )
+
+        // Converter a mensagem para minúsculo para comparação case-insensitive
+        val lowercaseMessage = message.lowercase()
+
+        // Verificar se a mensagem contém palavras-chave proibidas
+        // Usando regex com limites de palavra para evitar falsos positivos
+        return prohibitedTopics.values.flatten().any { keyword ->
+            // Regex para corresponder à palavra completa ou parte de uma palavra composta
+            val pattern = "\\b$keyword\\b|\\b$keyword-|\\b$keyword\\s"
+            pattern.toRegex().containsMatchIn(lowercaseMessage)
+        }
+    }
+
+    private fun isValidResponse(response: String): Boolean {
+        // Padrões de frases que indicam que a resposta está fora do escopo
+        val prohibitedPhrases = listOf(
+            // Física
+            "na física", "em física", "a física", "física é", "física clássica", "física quântica",
+            "leis da física", "conceito físico", "fenômeno físico", "teoria física",
+
+            // Matemática
+            "em matemática", "na matemática", "fórmula", "equação", "cálculo de",
+            "teorema", "matemática é", "matematicamente", "valor numérico", "resolva",
+
+            // História
+            "na história", "história do", "período histórico", "guerra mundial",
+            "revolução", "império", "dinastia", "século", "era", "idade média",
+
+            // Política
+            "presidente", "governador", "político", "eleição", "partido",
+            "congresso", "senado", "câmara", "ministro", "governo",
+
+            // Astronomia
+            "astronomia", "planeta", "sistema solar", "galáxia", "estrela",
+            "constelação", "universo", "nasa", "telescópio", "órbita",
+
+            // Tecnologia/Computação
+            "computação", "programação", "código fonte", "algoritmo", "linguagem de programação",
+            "software", "hardware", "aplicativo", "desenvolvimento web", "sistema operacional",
+
+            // Esportes/Entretenimento
+            "esporte", "time", "jogador", "campeonato", "liga", "filme", "série",
+            "ator", "diretor", "cinema", "televisão", "streaming", "episódio"
+        )
+
+        // Exceções para permitir contextos de saúde mental
+        val allowedContexts = listOf(
+            "no contexto da saúde mental", "relacionado à saúde mental",
+            "impacto na saúde mental", "afeta a saúde mental",
+            "bem-estar emocional", "bem-estar psicológico",
+            "técnica terapêutica", "abordagem terapêutica"
+        )
+
+        val lowercaseResponse = response.lowercase()
+
+        // Verificar se há frases proibidas que não estão em contextos permitidos
+        return !prohibitedPhrases.any { phrase ->
+            // Verifica se contém a frase proibida
+            if (lowercaseResponse.contains(phrase)) {
+                // Verifica se está em um contexto permitido
+                !allowedContexts.any { context ->
+                    // Procura o contexto próximo à frase proibida (50 caracteres antes e depois)
+                    val startIndex = maxOf(0, lowercaseResponse.indexOf(phrase) - 50)
+                    val endIndex = minOf(lowercaseResponse.length, lowercaseResponse.indexOf(phrase) + phrase.length + 50)
+                    val surroundingText = lowercaseResponse.substring(startIndex, endIndex)
+                    surroundingText.contains(context)
+                }
+            } else {
+                false
+            }
+        }
+    }
+
     private suspend fun callGeminiApi(
         userMessageText: String,
         historyForApi: List<Content>,
@@ -429,7 +485,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         Log.i("ChatViewModel", "Stream completed successfully for conv $conversationId.")
                         finalBotResponseText = currentBotText
 
-                        // NOVO: Verificar se a resposta é válida (não contém tópicos proibidos)
                         if (!finalBotResponseText.isNullOrBlank() && !isValidResponse(finalBotResponseText!!)) {
                             Log.w("ChatViewModel", "Invalid response detected for conv $conversationId, replacing with fallback")
                             finalBotResponseText = "Desculpe, não posso fornecer essa informação pois está fora do escopo de saúde mental. Como posso ajudar com seu bem-estar emocional hoje?"
@@ -465,7 +520,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // saveMessageToDb
     private fun saveMessageToDb(message: ChatMessage, conversationId: Long, timestamp: Long = System.currentTimeMillis()) {
         if (conversationId == NEW_CONVERSATION_ID) {
             Log.e("ChatViewModel", "Attempted to save message with invalid NEW_CONVERSATION_ID. Message: '${message.text.take(30)}...'")
@@ -482,8 +536,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Funções de Mapeamento ---
-    // mapEntitiesToUiMessages
     private fun mapEntitiesToUiMessages(entities: List<ChatMessageEntity>): List<ChatMessage> {
         return entities.mapNotNull { entity ->
             try {
@@ -496,7 +548,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // mapUiMessageToEntity
     private fun mapUiMessageToEntity(message: ChatMessage, conversationId: Long, timestamp: Long): ChatMessageEntity {
         return ChatMessageEntity(
             conversationId = conversationId,
@@ -506,7 +557,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    // mapMessagesToApiHistory
     private fun mapMessagesToApiHistory(messages: List<ChatMessage>): List<Content> {
         return messages
             .takeLast(MAX_HISTORY_MESSAGES)
@@ -516,7 +566,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
-    // getDisplayTitle
     suspend fun getDisplayTitle(conversationId: Long): String {
         return withContext(Dispatchers.IO) {
             var titleResult: String
@@ -524,17 +573,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 titleResult = "Nova Conversa"
             } else {
                 try {
-                    // 1. Tenta buscar título personalizado PRIMEIRO
                     val customTitle = metadataDao.getCustomTitle(conversationId)
                     if (!customTitle.isNullOrBlank()) {
                         Log.d("ChatViewModel", "Using custom title for $conversationId: '$customTitle'")
                         titleResult = customTitle
                     } else {
-                        // 2. Se não há título personalizado, tenta a primeira mensagem do usuário
                         titleResult = generateFallbackTitle(conversationId)
                     }
                 } catch (dbException: Exception) {
-                    // Erro geral ao buscar título (customizado ou da mensagem)
                     Log.e("ChatViewModel", "Error fetching title data for conv $conversationId", dbException)
                     titleResult = "Conversa $conversationId"
                 }
@@ -543,7 +589,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Função helper para gerar título fallback
     private suspend fun generateFallbackTitle(conversationId: Long): String = withContext(Dispatchers.IO) {
         try {
             val firstUserMessageText = chatDao.getFirstUserMessageText(conversationId)
@@ -551,7 +596,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 Log.d("ChatViewModel", "Generating fallback title for $conversationId using first message.")
                 return@withContext firstUserMessageText.take(30) + if (firstUserMessageText.length > 30) "..." else ""
             } else {
-                // Tenta usar a data/hora
                 try {
                     Log.d("ChatViewModel", "Generating fallback title for $conversationId using date.")
                     return@withContext "Conversa ${titleDateFormatter.format(Date(conversationId))}"
@@ -566,7 +610,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Companion Object
     companion object {
         private val titleDateFormatter = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
     }
