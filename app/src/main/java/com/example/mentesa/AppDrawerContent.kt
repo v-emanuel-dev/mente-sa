@@ -51,7 +51,8 @@ fun AppDrawerContent(
             label = { Text(stringResource(R.string.new_conversation_title)) },
             selected = currentConversationId == null || currentConversationId == NEW_CONVERSATION_ID,
             onClick = onNewChatClick,
-            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp) // margem personalizada
         )
         Spacer(modifier = Modifier.height(8.dp))
 

@@ -84,16 +84,7 @@ fun ChatScreen(
                 },
                 // --- Passando as novas lambdas ---
                 onDeleteConversationRequest = { conversationId ->
-                    // Fecha o drawer ANTES de deletar ou mostrar confirmação
-                    coroutineScope.launch { drawerState.close() }
-                    // --- Lógica de Exclusão (pode adicionar confirmação) ---
-                    // Opção 1: Deletar direto (como está agora)
-                    Log.d("ChatScreen", "Delete requested for $conversationId. Deleting directly.")
                     chatViewModel.deleteConversation(conversationId)
-
-                    // Opção 2: Mostrar diálogo de confirmação (descomente abaixo e comente a linha acima)
-                    // Log.d("ChatScreen", "Delete requested for $conversationId. Showing confirmation.")
-                    // showDeleteConfirmationDialog = conversationId
                 },
                 onRenameConversationRequest = { conversationId ->
                     // Fecha o drawer e prepara para renomear (mostra diálogo - a implementar)

@@ -108,7 +108,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // --- FIM DA DEFINIÇÃO ATUALIZADA ---
 
     // Mensagem de boas vindas
-    private val welcomeMessageText = "Olá! Eu sou o MenteSã, seu assistente virtual de saúde mental. Estou aqui para te acompanhar com empatia e respeito na sua jornada de bem-estar. Como você está se sentindo hoje?"
+    private val welcomeMessageText = "Olá! 👋 Eu sou o Mente Sã, seu assistente virtual de saúde mental. Estou aqui para te acompanhar com empatia e respeito na sua jornada de bem-estar. Como você está se sentindo hoje?"
 
     // Prompt Base (mantenha o seu prompt completo)
     private val menteSaSystemPrompt = """
@@ -133,7 +133,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // Modelo Gemini
     private val generativeModel = GenerativeModel(
         // Usar um modelo estável recomendado
-        modelName = "gemini-1.5-flash-latest", // Ou "gemini-1.5-pro-latest"
+        modelName = "gemini-2.0-flash",
         apiKey = BuildConfig.GEMINI_API_KEY,
         systemInstruction = content { text(menteSaSystemPrompt) },
         requestOptions = RequestOptions(timeout = 60000) // Timeout 60s
@@ -265,8 +265,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     withContext(Dispatchers.Main) { // Volta para a thread principal para atualizar o ID
                         // O Flow 'conversations' DEVE atualizar automaticamente após a exclusão no BD.
                         // Pegamos o valor mais recente dele para decidir o que selecionar.
-                        val remainingConversations = conversations.value // Pega valor atual do StateFlow
-                        val nextConversationId = remainingConversations.firstOrNull()?.id // Pega a mais recente que sobrou
+                        val remainingConversations = chatDao.getConversations().first()
+                        val nextConversationId = remainingConversations.firstOrNull()?.id
 
                         if (nextConversationId != null) {
                             Log.i("ChatViewModel", "Deleted current conversation, selecting next available: $nextConversationId")
