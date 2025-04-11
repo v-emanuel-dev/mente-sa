@@ -37,7 +37,7 @@ fun AppDrawerContent(
         Spacer(modifier = Modifier.height(16.dp))
 
         NavigationDrawerItem(
-            icon = { Icon(Icons.Default.AddComment, contentDescription = null) },
+            icon = { Icon(Icons.Default.Add, contentDescription = null) },
             label = { Text(stringResource(R.string.new_conversation_title)) },
             selected = currentConversationId == null || currentConversationId == NEW_CONVERSATION_ID,
             onClick = onNewChatClick,
@@ -83,6 +83,15 @@ private fun ConversationDrawerRow(
         Color.Transparent
     }
 
+    // Determina o ícone da conversa com base no seu tipo
+    val (conversationIcon, iconTint) = when (displayItem.conversationType) {
+        ConversationType.PERSONAL -> Icons.Default.Person to MaterialTheme.colorScheme.secondary
+        ConversationType.EMOTIONAL -> Icons.Default.Favorite to Color(0xFFE57373) // Vermelho claro
+        ConversationType.THERAPEUTIC -> Icons.Default.Psychology to Color(0xFF64B5F6) // Azul claro
+        ConversationType.HIGHLIGHTED -> Icons.Default.Star to Color(0xFFFFD54F) // Amarelo âmbar
+        ConversationType.GENERAL -> Icons.Default.Chat to MaterialTheme.colorScheme.primary
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -91,7 +100,12 @@ private fun ConversationDrawerRow(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(24.dp))
+        Icon(
+            imageVector = conversationIcon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = iconTint
+        )
         Spacer(modifier = Modifier.width(16.dp))
         Text(
             text = displayItem.displayTitle,

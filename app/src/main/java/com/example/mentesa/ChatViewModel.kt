@@ -28,8 +28,18 @@ import java.util.Locale
 data class ConversationDisplayItem(
     val id: Long,
     val displayTitle: String,
-    val lastTimestamp: Long
+    val lastTimestamp: Long,
+    val conversationType: ConversationType = ConversationType.GENERAL
 )
+
+// Enum para representar diferentes tipos de conversa
+enum class ConversationType {
+    GENERAL,        // Conversa geral - ícone padrão de chat
+    PERSONAL,       // Conversa pessoal - ícone de pessoa
+    EMOTIONAL,      // Conversa emocional - ícone de coração
+    THERAPEUTIC,    // Conversa terapêutica - ícone de psicologia
+    HIGHLIGHTED     // Conversa destacada - ícone de estrela
+}
 
 enum class LoadingState { IDLE, LOADING, ERROR }
 
@@ -79,10 +89,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val customTitle = metadataMap[convInfo.id]?.takeIf { it.isNotBlank() }
                 val finalTitle = customTitle ?: generateFallbackTitle(convInfo.id)
 
+                // Determinar o tipo de conversa com base no título ou no primeiro texto
+                val conversationType = determineConversationType(finalTitle, convInfo.id)
+
                 ConversationDisplayItem(
                     id = convInfo.id,
                     displayTitle = finalTitle,
-                    lastTimestamp = convInfo.lastTimestamp
+                    lastTimestamp = convInfo.lastTimestamp,
+                    conversationType = conversationType
                 )
             }
         }
@@ -177,6 +191,42 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         loadInitialConversationOrStartNew()
+    }
+
+    // Função auxiliar para determinar o tipo de conversa
+    private fun determineConversationType(title: String, id: Long): ConversationType {
+        val lowercaseTitle = title.lowercase()
+
+        return when {
+            lowercaseTitle.contains("ansiedade") ||
+                    lowercaseTitle.contains("medo") ||
+                    lowercaseTitle.contains("preocup") -> ConversationType.EMOTIONAL
+
+            lowercaseTitle.contains("depress") ||
+                    lowercaseTitle.contains("triste") ||
+                    lowercaseTitle.contains("terapia") ||
+                    lowercaseTitle.contains("tratamento") -> ConversationType.THERAPEUTIC
+
+            lowercaseTitle.contains("eu") ||
+                    lowercaseTitle.contains("minha") ||
+                    lowercaseTitle.contains("meu") ||
+                    lowercaseTitle.contains("como me") -> ConversationType.PERSONAL
+
+            lowercaseTitle.contains("importante") ||
+                    lowercaseTitle.contains("urgente") ||
+                    lowercaseTitle.contains("lembrar") -> ConversationType.HIGHLIGHTED
+
+            else -> {
+                // Distribuição aleatória mas determinística para o restante
+                when ((id % 5)) {
+                    0L -> ConversationType.GENERAL
+                    1L -> ConversationType.PERSONAL
+                    2L -> ConversationType.EMOTIONAL
+                    3L -> ConversationType.THERAPEUTIC
+                    else -> ConversationType.HIGHLIGHTED
+                }
+            }
+        }
     }
 
     private fun loadInitialConversationOrStartNew() {
