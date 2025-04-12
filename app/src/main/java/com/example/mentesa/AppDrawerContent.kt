@@ -84,7 +84,8 @@ private fun ConversationDrawerRow(
     }
 
     // Determina o ícone da conversa com base no seu tipo
-    val (conversationIcon, iconTint) = when (displayItem.conversationType) {
+    val conversationType = displayItem.conversationType ?: ConversationType.GENERAL
+    val (conversationIcon, iconTint) = when (conversationType) {
         ConversationType.PERSONAL -> Icons.Default.Person to MaterialTheme.colorScheme.secondary
         ConversationType.EMOTIONAL -> Icons.Default.Favorite to Color(0xFFE57373) // Vermelho claro
         ConversationType.THERAPEUTIC -> Icons.Default.Psychology to Color(0xFF64B5F6) // Azul claro

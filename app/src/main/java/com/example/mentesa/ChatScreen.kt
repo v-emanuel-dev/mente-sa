@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,13 +46,17 @@ private val BotTextColor = Color.White
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
-    chatViewModel: ChatViewModel = viewModel()
+    onLogin: () -> Unit = {},
+    onLogout: () -> Unit = {},
+    chatViewModel: ChatViewModel = viewModel(),
+    authViewModel: AuthViewModel = viewModel()
 ) {
     val messages by chatViewModel.messages.collectAsState()
     val conversationDisplayList by chatViewModel.conversationListForDrawer.collectAsState()
     val currentConversationId by chatViewModel.currentConversationId.collectAsState()
     val isLoading by chatViewModel.isLoading.collectAsState()
     val errorMessage by chatViewModel.errorMessage.collectAsState()
+    val currentUser by authViewModel.currentUser.collectAsState()
 
     var userMessage by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -102,58 +108,81 @@ fun ChatScreen(
             )
         }
     ) {
-        Scaffold(
-            topBar = {
-                CenterAlignedTopAppBar(
-                    title = { Text(stringResource(id = R.string.app_name)) },
-                    navigationIcon = {
-                        IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
-                            Icon(Icons.Filled.Menu, stringResource(R.string.open_drawer_description), tint = Color.White)
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color.Black, titleContentColor = Color.White
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Scaffold(
+                topBar = {
+                    CenterAlignedTopAppBar(
+                        title = { Text(stringResource(id = R.string.app_name)) },
+                        navigationIcon = {
+                            IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
+                                Icon(Icons.Filled.Menu, stringResource(R.string.open_drawer_description), tint = Color.White)
+                            }
+                        },
+                        actions = {
+                            // Login/logout button
+                            IconButton(
+                                onClick = {
+                                    if (currentUser != null) {
+                                        onLogout()
+                                    } else {
+                                        onLogin()
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = if (currentUser != null) Icons.Default.Logout else Icons.Default.Login,
+                                    contentDescription = if (currentUser != null) "Sair" else "Entrar",
+                                    tint = Color.White
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                            containerColor = Color.Black, titleContentColor = Color.White
+                        )
                     )
-                )
-            },
-            bottomBar = {
-                MessageInput(
-                    message = userMessage,
-                    onMessageChange = { userMessage = it },
-                    onSendClick = {
-                        if (userMessage.isNotBlank()) {
-                            chatViewModel.sendMessage(userMessage)
-                            userMessage = ""
-                        }
-                    },
-                    isSendEnabled = !isLoading
-                )
-            }
-        ) { paddingValues ->
-            Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
-                ) {
-                    items(messages, key = { "${it.sender}-${it.text.hashCode()}" }) { message ->
-                        MessageBubble(message = message)
-                    }
-                    if (isLoading) {
-                        item { TypingBubbleAnimation(modifier = Modifier.padding(vertical = 4.dp)) }
-                    }
+                },
+                bottomBar = {
+                    MessageInput(
+                        message = userMessage,
+                        onMessageChange = { userMessage = it },
+                        onSendClick = {
+                            if (userMessage.isNotBlank()) {
+                                chatViewModel.sendMessage(userMessage)
+                                userMessage = ""
+                            }
+                        },
+                        isSendEnabled = !isLoading
+                    )
                 }
-                errorMessage?.let { errorMsg ->
-                    Text(
-                        text = "Erro: $errorMsg",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
-                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f))
-                            .padding(vertical = 4.dp)
-                    )
+            ) { paddingValues ->
+                Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 8.dp)
+                    ) {
+                        items(messages, key = { "${it.sender}-${it.text.hashCode()}" }) { message ->
+                            MessageBubble(message = message)
+                        }
+                        if (isLoading) {
+                            item { TypingBubbleAnimation(modifier = Modifier.padding(vertical = 4.dp)) }
+                        }
+                    }
+                    errorMessage?.let { errorMsg ->
+                        Text(
+                            text = "Erro: $errorMsg",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f))
+                                .padding(vertical = 4.dp)
+                        )
+                    }
                 }
             }
         }
@@ -397,73 +426,6 @@ fun TypingBubbleAnimation(modifier: Modifier = Modifier) {
             contentAlignment = Alignment.Center
         ) {
             TypingIndicatorAnimation()
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Preview(showSystemUi = true, name = "Chat Screen Preview")
-@Composable
-fun ChatScreenPreview() {
-    val previewMessages = remember {
-        mutableStateListOf(
-            ChatMessage("Olá! Preview.", Sender.BOT),
-            ChatMessage("Tudo bem?", Sender.USER)
-        )
-    }
-    val previewConversations = remember {
-        listOf(
-            ConversationDisplayItem(1L, "Conversa 1", 0L),
-            ConversationDisplayItem(2L, "Conversa 2 Longa...", 0L)
-        )
-    }
-    val previewIsLoading = remember { mutableStateOf(false) }
-
-    MenteSaTheme {
-        val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-        val scope = rememberCoroutineScope()
-        ModalNavigationDrawer(
-            drawerState = drawerState,
-            drawerContent = {
-                AppDrawerContent(
-                    conversationDisplayItems = previewConversations,
-                    currentConversationId = 1L,
-                    onConversationClick = { scope.launch { drawerState.close() } },
-                    onNewChatClick = { scope.launch { drawerState.close() } },
-                    onDeleteConversationRequest = {},
-                    onRenameConversationRequest = {}
-                )
-            }
-        ) {
-            Scaffold(
-                topBar = {
-                    CenterAlignedTopAppBar(
-                        title = { Text("Mente Sã Preview") },
-                        navigationIcon = {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(Icons.Filled.Menu, contentDescription = "Open menu")
-                            }
-                        }
-                    )
-                },
-                bottomBar = {
-                    MessageInput(
-                        message = "",
-                        onMessageChange = {},
-                        onSendClick = {},
-                        isSendEnabled = true
-                    )
-                }
-            ) { padding ->
-                LazyColumn(
-                    modifier = Modifier
-                        .padding(padding)
-                        .fillMaxSize()
-                ) {
-                    items(previewMessages) { msg -> MessageBubble(message = msg) }
-                    if (previewIsLoading.value) { item { TypingBubbleAnimation() } }
-                }
-            }
         }
     }
 }

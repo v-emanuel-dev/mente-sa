@@ -15,6 +15,7 @@ import com.example.mentesa.data.db.ChatMessageEntity
 import com.example.mentesa.data.db.ConversationInfo
 import com.example.mentesa.data.db.ConversationMetadataDao
 import com.example.mentesa.data.db.ConversationMetadataEntity
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -24,22 +25,6 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-data class ConversationDisplayItem(
-    val id: Long,
-    val displayTitle: String,
-    val lastTimestamp: Long,
-    val conversationType: ConversationType = ConversationType.GENERAL
-)
-
-// Enum para representar diferentes tipos de conversa
-enum class ConversationType {
-    GENERAL,        // Conversa geral - ícone padrão de chat
-    PERSONAL,       // Conversa pessoal - ícone de pessoa
-    EMOTIONAL,      // Conversa emocional - ícone de coração
-    THERAPEUTIC,    // Conversa terapêutica - ícone de psicologia
-    HIGHLIGHTED     // Conversa destacada - ícone de estrela
-}
 
 enum class LoadingState { IDLE, LOADING, ERROR }
 
@@ -52,6 +37,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val appDb = AppDatabase.getDatabase(application)
     private val chatDao: ChatDao = appDb.chatDao()
     private val metadataDao: ConversationMetadataDao = appDb.conversationMetadataDao()
+    private val auth = FirebaseAuth.getInstance()
+
+    // Current user ID from Firebase
+    private val currentUserId: String
+        get() = auth.currentUser?.uid ?: "local_user"
 
     private val _currentConversationId = MutableStateFlow<Long?>(null)
     val currentConversationId: StateFlow<Long?> = _currentConversationId.asStateFlow()
@@ -67,14 +57,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    private val rawConversationsFlow: Flow<List<ConversationInfo>> = chatDao.getConversations()
+    private val rawConversationsFlow: Flow<List<ConversationInfo>> = chatDao.getConversationsForUser(currentUserId)
         .catch { e ->
             Log.e("ChatViewModel", "Error loading raw conversations flow", e)
             _errorMessage.value = "Erro ao carregar lista de conversas (raw)."
             emit(emptyList())
         }
 
-    private val metadataFlow: Flow<List<ConversationMetadataEntity>> = metadataDao.getAllMetadata()
+    private val metadataFlow: Flow<List<ConversationMetadataEntity>> = metadataDao.getMetadataForUser(currentUserId)
         .catch { e ->
             Log.e("ChatViewModel", "Error loading metadata flow", e)
             emit(emptyList())
@@ -95,7 +85,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 ConversationDisplayItem(
                     id = convInfo.id,
                     displayTitle = finalTitle,
-                    lastTimestamp = convInfo.lastTimestamp,
+                    lastTimestamp = convInfo.lastTimestamp,  // Garantir que está usando lastTimestamp
                     conversationType = conversationType
                 )
             }
@@ -236,7 +226,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             Log.d("ChatViewModel", "[Init] Initial display list check (using .value): ${initialDisplayList.size}")
             val latestConversationId = initialDisplayList.firstOrNull()?.id
             if (_currentConversationId.value == null) {
-                _currentConversationId.value = latestConversationId
+                _currentConversationId.value = latestConversationId ?: NEW_CONVERSATION_ID
                 Log.i("ChatViewModel", "[Init] Setting initial conversation ID to: ${_currentConversationId.value}")
             } else {
                 Log.d("ChatViewModel","[Init] Initial conversation ID already set to ${_currentConversationId.value}. Skipping.")
@@ -292,7 +282,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _currentConversationId.value = targetConversationId
             viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    metadataDao.insertOrUpdateMetadata(ConversationMetadataEntity(targetConversationId, null))
+                    metadataDao.insertOrUpdateMetadata(
+                        ConversationMetadataEntity(
+                            conversationId = targetConversationId,
+                            customTitle = null,
+                            userId = currentUserId
+                        )
+                    )
                 } catch (e: Exception) {
                     Log.e("ChatViewModel", "Error saving initial metadata for new conv $targetConversationId", e)
                 }
@@ -349,7 +345,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 Log.i("ChatViewModel", "Conversation $conversationId and metadata deleted successfully from DB.")
 
                 if (_currentConversationId.value == conversationId) {
-                    val remainingConversations = chatDao.getConversations().first()
+                    val remainingConversations = chatDao.getConversationsForUser(currentUserId).first()
 
                     withContext(Dispatchers.Main) {
                         val nextConversationId = remainingConversations.firstOrNull()?.id
@@ -385,7 +381,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         Log.i("ChatViewModel", "Action: Renaming conversation $conversationId to '$trimmedTitle'")
-        val metadata = ConversationMetadataEntity(conversationId = conversationId, customTitle = trimmedTitle)
+        val metadata = ConversationMetadataEntity(
+            conversationId = conversationId,
+            customTitle = trimmedTitle,
+            userId = currentUserId
+        )
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 metadataDao.insertOrUpdateMetadata(metadata)
@@ -603,7 +603,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             conversationId = conversationId,
             text = message.text,
             sender = message.sender.name,
-            timestamp = timestamp
+            timestamp = timestamp,
+            userId = currentUserId
         )
     }
 

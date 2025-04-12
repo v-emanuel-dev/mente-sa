@@ -11,5 +11,8 @@ data class ConversationMetadataEntity(
     val conversationId: Long,
 
     @ColumnInfo(name = "custom_title")
-    val customTitle: String?
+    val customTitle: String?,
+
+    @ColumnInfo(name = "user_id")
+    val userId: String = "local_user"
 )

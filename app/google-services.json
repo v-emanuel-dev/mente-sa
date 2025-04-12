@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1067359774815",
+    "project_id": "mente-sa-a643e",
+    "storage_bucket": "mente-sa-a643e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1067359774815:android:b7e92e143adccfb75213ea",
+        "android_client_info": {
+          "package_name": "com.example.mentesa"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCVagm0JLtGMWwMV6whzmIKanC0B9tPt-g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
